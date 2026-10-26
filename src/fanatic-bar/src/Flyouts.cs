@@ -916,15 +916,23 @@ static partial class FanaticBar
     sealed class HourForecast { public DateTime Time; public int Code; public double Temp; public bool Day = true; }
     // WMO weather code -> Meteocons icon (rendered once to weather-icons\png\*.png on black, 128 px).
     static readonly Dictionary<string, Image> meteocons = new Dictionary<string, Image>();
-    static Image MeteoconFor(int code, bool day = true)
+    static Image MeteoconFor(int code, bool day = true) { return WeatherPng(WeatherIconName(code, day)); }
+    // = whitebook panel-weather icon_file(): one mapping for the bar, the hourly list and whitebook
+    static string WeatherIconName(int code, bool day)
     {
-        // night: a clear / partly cloudy hour uses the *-night picture when the set has one
-        if (!day && code <= 2) { var night = WeatherPng(code == 0 ? "clear-night" : "partly-cloudy-night"); if (night != null) return night; }
-        string n = code == 0 ? "clear-day" : code <= 2 ? "partly-cloudy-day" : code == 3 ? "overcast" : code == 45 || code == 48 ? "fog"
-            : code >= 51 && code <= 55 ? "drizzle" : code == 56 || code == 57 || code == 66 || code == 67 ? "sleet" : code >= 61 && code <= 65 ? "rain"
-            : code >= 71 && code <= 77 ? "snow" : code == 80 || code == 81 ? "partly-cloudy-day-rain" : code == 82 ? "rain"
-            : code == 85 || code == 86 ? "partly-cloudy-day-snow" : code == 95 ? "thunderstorms" : code == 96 || code == 99 ? "thunderstorms-rain" : "not-available";
-        return WeatherPng(n);
+        if (code == 0) return day ? "clear-day" : "clear-night";
+        if (code == 1 || code == 2) return day ? "partly-cloudy-day" : "partly-cloudy-night";
+        if (code == 3) return "overcast";
+        if (code == 45 || code == 48) return "fog";
+        if (code == 51 || code == 53 || code == 55 || code == 56 || code == 57) return "drizzle";
+        if (code == 61 || code == 63 || code == 65) return "rain";
+        if (code == 66 || code == 67) return "sleet";
+        if (code == 71 || code == 73 || code == 75 || code == 77) return "snow";
+        if (code == 80 || code == 81 || code == 82) return day ? "partly-cloudy-day-rain" : "rain";
+        if (code == 85 || code == 86) return day ? "partly-cloudy-day-snow" : "snow";
+        if (code == 95) return "thunderstorms";
+        if (code == 96 || code == 99) return "thunderstorms-rain";
+        return "not-available";
     }
     static Image WeatherPng(string n)
     {

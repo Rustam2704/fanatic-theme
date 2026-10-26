@@ -480,8 +480,35 @@ static partial class FanaticBar
     // ---- weather (Render-Weather): symbol viewBox "4.8 0 46.4 48"; temperature = 2 digits, no sign, colour by sign ----
     // WMO code -> condition name is localised: see WmoName() and strings\<lang>.json keys "weather.wmo.<code>".
     const string Cloud = "M13 29c-5 0-7-3-7-7s3-7 7-7c2-7 8-11 15-10 6 1 10 5 11 11 c6-1 11 3 11 9 0 5-4 8-9 8H13z";
-    // code < 0 = no data yet (muted cloud).
-    static Bitmap DrawWeatherSymbol(int size, int code, bool stale) { return CropToInk(DrawWeatherSymbolBox(size * 4, code, stale), size, 1f); }
+    // The bar shows the same picture set as whitebook's panel-weather (owner 26.10): weather-icons\png, chosen by WMO code
+    // and day/night exactly like its icon_file(); the black background is keyed out (alpha = brightness) so the art looks the
+    // same on a black taskbar and blends on any other; stale data is drawn at half opacity like whitebook. code < 0 = no data.
+    // The drawn symbol below (DrawWeatherSymbolBox) stays as the fallback when the PNG set is missing.
+    static Bitmap DrawWeatherSymbol(int size, int code, bool stale, bool day = true)
+    {
+        var png = WeatherPng(WeatherIconName(code, day));
+        if (png == null) return CropToInk(DrawWeatherSymbolBox(size * 4, code, stale), size, 1f);
+        var keyed = KeyBlack((Bitmap)png, stale || code < 0 ? 0.5 : 1.0);
+        return CropToInk(keyed, size, 1f);
+    }
+    // black-background art -> alpha: a = max(r,g,b), colour un-premultiplied, so over black it is pixel-identical
+    static Bitmap KeyBlack(Bitmap src, double opacity)
+    {
+        int w = src.Width, h = src.Height; var dst = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+        Bitmap s32; lock (src) s32 = src.Clone(new Rectangle(0, 0, w, h), PixelFormat.Format32bppArgb);
+        var ds = s32.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        var px = new int[w * h]; Marshal.Copy(ds.Scan0, px, 0, px.Length); s32.UnlockBits(ds); s32.Dispose();
+        for (int i = 0; i < px.Length; i++)
+        {
+            int r = (px[i] >> 16) & 255, g = (px[i] >> 8) & 255, bl = px[i] & 255, m = Math.Max(r, Math.Max(g, bl));
+            if (m == 0) { px[i] = 0; continue; }
+            int a = (int)(m * opacity);
+            px[i] = (a << 24) | ((r * 255 / m) << 16) | ((g * 255 / m) << 8) | (bl * 255 / m);
+        }
+        var dd = dst.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        Marshal.Copy(px, 0, dd.Scan0, px.Length); dst.UnlockBits(dd);
+        return dst;
+    }
     static Bitmap DrawWeatherSymbolBox(int size, int code, bool stale)
     {
         Graphics g; var bmp = NewIcon(size, out g);
@@ -863,7 +890,7 @@ static partial class FanaticBar
         if (bigVol != vol || bigMuted != muted) { bigVol = vol; bigMuted = muted; BigChanged(); }
     }
 
-    static int wCode = -1; static double? wTempVal; static DateTime wOk = DateTime.MinValue;
+    static int wCode = -1; static bool wDay = true; static double? wTempVal; static DateTime wOk = DateTime.MinValue;
     static System.Threading.Timer weatherTimer;
     static void PollWeather()
     {
@@ -875,10 +902,11 @@ static partial class FanaticBar
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             using (var wc = new WebClient { Encoding = System.Text.Encoding.UTF8 })
             {
-                string js = wc.DownloadString("https://api.open-meteo.com/v1/forecast?" + GeoQuery + "&current=temperature_2m,weather_code&timezone=auto");
+                string js = wc.DownloadString("https://api.open-meteo.com/v1/forecast?" + GeoQuery + "&current=temperature_2m,weather_code,is_day&timezone=auto");
                 var cur = Regex.Match(js, "\"current\"\\s*:\\s*\\{([^}]*)\\}").Groups[1].Value;
                 var t = Regex.Match(cur, "\"temperature_2m\"\\s*:\\s*(-?[\\d.]+)"); var c = Regex.Match(cur, "\"weather_code\"\\s*:\\s*(\\d+)");
-                if (t.Success && c.Success) { wTempVal = double.Parse(t.Groups[1].Value, Inv); wCode = int.Parse(c.Groups[1].Value); wOk = DateTime.Now; ok = true; }
+                var dn = Regex.Match(cur, "\"is_day\"\\s*:\\s*(\\d)");
+                if (t.Success && c.Success) { wTempVal = double.Parse(t.Groups[1].Value, Inv); wCode = int.Parse(c.Groups[1].Value); wDay = !dn.Success || dn.Groups[1].Value != "0"; wOk = DateTime.Now; ok = true; }
             }
         }
         catch (Exception ex) { Log("weather: " + ex.Message); }
@@ -888,13 +916,13 @@ static partial class FanaticBar
     static void RenderWeather()
     {
         bool stale = wOk == DateTime.MinValue || (DateTime.Now - wOk).TotalMinutes > 60;
-        int code = wCode; double? temp = wTempVal;
+        int code = wCode; bool day = wDay; double? temp = wTempVal;
         string nm = WmoName(code);
         string place = GeoPlace;   // stored location name (A5), falls back to the localised default label
         string tip = temp == null ? Strings.T("tip.weather.no_data")
             : (stale ? Strings.T("tip.weather.stale", Strings.T("tip.weather", place, nm, Math.Round(temp.Value).ToString(Inv)))
                      : Strings.T("tip.weather", place, nm, Math.Round(temp.Value).ToString(Inv)));
-        Show(wSym, code + "/" + stale, s => DrawWeatherSymbol(s, code, stale), tip);
+        Show(wSym, code + "/" + day + "/" + stale, s => DrawWeatherSymbol(s, code, stale, day), tip);
         Show(wTemp, (temp == null ? "-" : Math.Round(temp.Value).ToString(Inv)) + "/" + stale, s => DrawWeatherTemp(s, temp, stale), tip);
     }
 
