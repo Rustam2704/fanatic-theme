@@ -79,10 +79,23 @@ static partial class FanaticBar
         ushort lang = (ushort)((long)GetKeyboardLayout(th) & 0xFFFF);
         return Array.IndexOf(LangIds, lang);
     }
+    // A window the user types in: not the taskbar / tray / desktop and not one of ours (like keyboard-switch's RememberApp).
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+    static bool IsAppWindow(IntPtr h)
+    {
+        uint pid; GetWindowThreadProcessId(h, out pid); if (pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id) return false;
+        var c = new System.Text.StringBuilder(64); GetClassName(h, c, 64); string n = c.ToString();
+        return n != "Shell_TrayWnd" && n != "Shell_SecondaryTrayWnd" && n != "NotifyIconOverflowWindow" && n != "TopLevelWindowForOverflowXamlIsland"
+            && n != "Progman" && n != "WorkerW";
+    }
+    // Give the focus back to the app window (the click made the taskbar active) and switch ITS layout.
     static void SwitchLayout(int idx, IntPtr target)
     {
         IntPtr hkl = LoadKeyboardLayout(LangKlids[idx], 0);
-        if (target != IntPtr.Zero) PostMessage(target, 0x0050 /*WM_INPUTLANGCHANGEREQUEST*/, IntPtr.Zero, hkl);
+        if (target == IntPtr.Zero || !IsWindow(target)) return;
+        SetForegroundWindow(target);
+        PostMessage(target, 0x0050 /*WM_INPUTLANGCHANGEREQUEST*/, IntPtr.Zero, hkl);
     }
     // Left click: the next layout in a full cycle UA -> RU -> EN -> UA (owner 26.10). Right click: the menu.
     static void LangClick(bool right, Rectangle box, IntPtr target)
@@ -295,7 +308,7 @@ static partial class FanaticBar
         {
             // keep the layout, the second (colon blink) and the place current; the other readings invalidate through BigChanged()
             var fg = GetForegroundWindow();
-            if (fg != Handle && fg != IntPtr.Zero) lastFg = fg;
+            if (fg != Handle && fg != IntPtr.Zero && IsAppWindow(fg)) lastFg = fg;   // the taskbar itself never counts (click on us = taskbar active)
             // the foreground thread's layout; consoles / terminals often report none: then our own thread's (one layout for all apps)
             int l = LayoutIndex(lastFg); if (l < 0) l = Array.IndexOf(LangIds, (ushort)((long)GetKeyboardLayout(0) & 0xFFFF));
             if (l != layout && l >= 0) { layout = l; Invalidate(); }
@@ -402,7 +415,7 @@ static partial class FanaticBar
                 using (var p = RoundRectF(x + u, cy - bh / 2 + u, bw - 2 * u, bh - 2 * u, 3 * u)) using (var pen = new Pen(Muted, 2 * u)) g.DrawPath(pen, p);
                 string code = layout >= 0 ? LangCodes[layout] : ""; Color col = layout >= 0 ? LangColours[layout] : Muted;
                 using (var p = DiabloText(code, out tw)) using (var m = new Matrix(s, 0, 0, s, x + (bw - tw * s) / 2, cy - cap / 2)) using (var b = new SolidBrush(col)) { p.Transform(m); g.FillPath(b, p); }
-                x += bw; IntPtr target = lastFg; Zone(x0, x, (right, box) => LangClick(right, box, target)); x += gap;
+                x += bw; Zone(x0, x, (right, box) => LangClick(right, box, lastFg)); x += gap;   // the app window remembered at CLICK time
             }
 
             // 5) date "ЖОВ 25 НД" (Render-Date): month in the season colour, day white (larger), weekday in the rainbow colour
