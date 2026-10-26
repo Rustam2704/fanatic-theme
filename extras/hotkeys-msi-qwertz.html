@@ -41,8 +41,9 @@ h1{margin:0 0 4px;color:var(--fg);font-size:26px;font-weight:600}
 .k.small .m{font-size:clamp(8px,.9vw,12px)}
 .k.hl .m{top:30%;font-size:clamp(9px,1.05vw,14px)}
 .k.hl .c,.k.hl .c2,.k.hl .g,.k.hl .ic,.k.hl .s{display:none}
-.k.short .ic{left:auto;right:4px;bottom:auto;top:50%;transform:translateY(-50%)}
-.k.short .g{display:none}
+.k.frow .m,.k.hasfx .m{top:34%}
+.k .fx{position:absolute;left:2px;right:2px;bottom:5px;text-align:center;color:var(--light);font:600 clamp(8px,.95vw,13px) "Segoe UI",sans-serif;white-space:nowrap;overflow:hidden}
+.k.frow .ic,.k.frow .g{display:none}
 .view-out .k .m{color:var(--fg)} .view-out .k .s{color:var(--muted)}
 .view-out .k.diff .m,.view-out .k.diff .s{color:var(--warn)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;color:var(--muted);font-size:13px}
@@ -102,6 +103,12 @@ kbd{display:inline-block;min-width:24px;padding:1px 7px;border:1px solid #3a4852
 <div class="note">После переключения на секунду появляется код раскладки (UA / RU / EN).</div>
 </section>
 
+<section class="wide">
+<h2>Fn — что реально делает (нажато на этом ноутбуке 26.10)</h2>
+<table class="list" id="fnlist"></table>
+<div class="note">Голубая подпись на клавише — то, что она делает вместе с Fn. Fn — между <kbd>&lt; &gt;</kbd> и правым Strg.</div>
+</section>
+
 <section>
 <h2>Мышь и тачпад</h2>
 <table class="list">
@@ -156,25 +163,32 @@ const ALT_GR = {"03":"²","04":"³","08":"{","09":"[","0A":"]","0B":"}","0C":"\\
 const STICKER = {"15":"Y","2C":"Z"};   // Y/Z stickers over the German Z/Y
 const FW = 16/15;
 const ROWS = [
-  {h:.62, keys:[["Escape",FW,{t:"Esc"}],["F1",FW,{t:"F1"}],["F2",FW,{t:"F2",ic:"▭▭",fn:"второй экран / проектор (меню как Win+P)"}],["F3",FW,{t:"F3",ic:"▢̸",fn:"тачпад выкл / вкл"}],
-    ["F4",FW,{t:"F4"}],["F5",FW,{t:"F5"}],["F6",FW,{t:"F6",ic:"◉",fn:"камера выкл / вкл"}],["F7",FW,{t:"F7",ic:"◔",fn:"кнопка MSI Center — программа не установлена, ничего не делает"}],
-    ["F8",FW,{t:"F8"}],["F9",FW,{t:"F9"}],["F10",FW,{t:"F10",ic:"✈",fn:"режим «в самолёте»"}],["F11",FW,{t:"F11"}],["F12",FW,{t:"F12",ic:"☾",fn:"сон"}],
-    ["PrintScreen",FW,{t:"Druck"}],["Delete",FW,{t:"Entf",g:"Einfg",ic:"",fn:"Einfg = Insert (вставка / замена)"}]]},
+  {h:1, keys:[["Escape",FW,{t:"Esc"}],["F1",FW,{t:"F1",fx:"—",fn:"ничего: клавиатура шлёт служебный код MSI, Windows его не использует (проверено)"}],
+    ["F2",FW,{t:"F2",fx:"экраны",fn:"меню экранов «Проецировать» — то же, что Win+P (проверено)"}],
+    ["F3",FW,{t:"F3",fx:"тачпад",fn:"тачпад выкл / вкл — шлёт Ctrl+Win+F24, переключатель тачпада Windows (проверено)"}],
+    ["F4",FW,{t:"F4",fn:"то же, что F4 без Fn"}],["F5",FW,{t:"F5",fn:"то же, что F5 без Fn"}],
+    ["F6",FW,{t:"F6",fx:"камера",fn:"камера выкл / вкл — по значку; клавиатура шлёт служебный код MSI"}],
+    ["F7",FW,{t:"F7",fx:"—",fn:"кнопка MSI Center — программа не установлена, ничего не делает (проверено)"}],
+    ["F8",FW,{t:"F8",fn:"то же, что F8 без Fn"}],["F9",FW,{t:"F9",fn:"то же, что F9 без Fn"}],
+    ["F10",FW,{t:"F10",fx:"самолёт",fn:"режим «в самолёте»: выключает Wi-Fi; повторно — включает (проверено)"}],
+    ["F11",FW,{t:"F11",fn:"то же, что F11 без Fn"}],
+    ["F12",FW,{t:"F12",fx:"сон",fn:"сон (проверено)"}],
+    ["PrintScreen",FW,{t:"Druck",fx:"снимок"}],["Delete",FW,{t:"Entf",g:"Einfg",fx:"Fn: Einfg",fn:"Einfg = Insert (проверено)"}]]},
   {h:1, keys:[["Backquote",1,{sc:"29"}],["Digit1",1,{sc:"02"}],["Digit2",1,{sc:"03"}],["Digit3",1,{sc:"04"}],["Digit4",1,{sc:"05"}],["Digit5",1,{sc:"06"}],
     ["Digit6",1,{sc:"07"}],["Digit7",1,{sc:"08"}],["Digit8",1,{sc:"09"}],["Digit9",1,{sc:"0A"}],["Digit0",1,{sc:"0B"}],["Minus",1,{sc:"0C"}],["Equal",1,{sc:"0D"}],
     ["Backspace",2,{t:"⟵"}],["Home",1,{t:"Pos1"}]]},
   {h:1, keys:[["Tab",1.5,{t:"⇆"}],["KeyQ",1,{sc:"10"}],["KeyW",1,{sc:"11"}],["KeyE",1,{sc:"12"}],["KeyR",1,{sc:"13"}],["KeyT",1,{sc:"14"}],["KeyY",1,{sc:"15"}],
     ["KeyU",1,{sc:"16"}],["KeyI",1,{sc:"17"}],["KeyO",1,{sc:"18"}],["KeyP",1,{sc:"19"}],["BracketLeft",1,{sc:"1A"}],["BracketRight",1,{sc:"1B"}],["Backslash",1.5,{sc:"2B"}],
-    ["PageUp",1,{t:"Bild↑",ic:"⌨☀+",fn:"подсветка клавиатуры ярче (по значку)"}]]},
+    ["PageUp",1,{t:"Bild↑",fx:"подсв. +",fn:"подсветка клавиатуры ярче — по значку; клавиатура шлёт служебный код MSI"}]]},
   {h:1, keys:[["CapsLock",1.75,{t:"⇩"}],["KeyA",1,{sc:"1E"}],["KeyS",1,{sc:"1F"}],["KeyD",1,{sc:"20"}],["KeyF",1,{sc:"21"}],["KeyG",1,{sc:"22"}],["KeyH",1,{sc:"23"}],
     ["KeyJ",1,{sc:"24"}],["KeyK",1,{sc:"25"}],["KeyL",1,{sc:"26"}],["Semicolon",1,{sc:"27"}],["Quote",1,{sc:"28"}],["Enter",2.25,{t:"↵"}],
-    ["PageDown",1,{t:"Bild↓",ic:"⌨☀−",fn:"подсветка клавиатуры темнее (по значку)"}]]},
+    ["PageDown",1,{t:"Bild↓",fx:"подсв. −",fn:"подсветка клавиатуры темнее — по значку; клавиатура шлёт служебный код MSI"}]]},
   {h:1, keys:[["ShiftLeft",2.25,{t:"⇧"}],["KeyZ",1,{sc:"2C"}],["KeyX",1,{sc:"2D"}],["KeyC",1,{sc:"2E"}],["KeyV",1,{sc:"2F"}],["KeyB",1,{sc:"30"}],["KeyN",1,{sc:"31"}],
     ["KeyM",1,{sc:"32"}],["Comma",1,{sc:"33"}],["Period",1,{sc:"34"}],["Slash",1,{sc:"35"}],["ShiftRight",1.75,{t:"⇧"}],
-    ["ArrowUp",1,{t:"↑",ic:"☀+",fn:"экран ярче"}],["End",1,{t:"Ende",ic:"🔇",fn:"звук выкл / вкл"}]]},
+    ["ArrowUp",1,{t:"↑",fx:"ярче",fn:"экран ярче (проверено)"}],["End",1,{t:"Ende",fx:"без звука",fn:"звук выкл / вкл (проверено)"}]]},
   {h:1, keys:[["ControlLeft",1.5,{t:"Strg"}],["MetaLeft",1,{t:"⊞"}],["AltLeft",1,{t:"Alt"}],["Space",5.5,{t:""}],["AltRight",1,{t:"Alt Gr",small:1}],
     ["IntlBackslash",1,{sc:"56"}],["Fn",1,{t:"Fn"}],["ControlRight",1,{t:"Strg"}],
-    ["ArrowLeft",1,{t:"←",ic:"🔉",fn:"тише"}],["ArrowDown",1,{t:"↓",ic:"☀−",fn:"экран темнее"}],["ArrowRight",1,{t:"→",ic:"🔊",fn:"громче"}]]}
+    ["ArrowLeft",1,{t:"←",fx:"тише",fn:"тише (проверено)"}],["ArrowDown",1,{t:"↓",fx:"темнее",fn:"экран темнее (проверено)"}],["ArrowRight",1,{t:"→",fx:"громче",fn:"громче (проверено)"}]]}
 ];
 const NAMES = {Escape:"Esc",PrintScreen:"Druck (Print Screen)",Delete:"Entf (Delete) / Einfg (Insert)",Backspace:"Backspace — стереть слева",Home:"Pos1 (Home) — в начало строки",
   Tab:"Tab",PageUp:"Bild↑ (Page Up)",CapsLock:"Caps Lock",Enter:"Enter",PageDown:"Bild↓ (Page Down)",ShiftLeft:"Shift левый",ShiftRight:"Shift правый",
@@ -217,7 +231,7 @@ for (const row of ROWS) {
   for (const [code, w, o] of row.keys) {
     const d = document.createElement('div'); d.className = 'k' + (o.small ? ' small' : '');
     d.style.left = (x / 16 * 100) + '%'; d.style.width = `calc(${w / 16 * 100}% - ${GAP * 100 / 16}%)`;
-    d.dataset.top = y; d.dataset.h = row.h; if (row.h < 1) d.classList.add('short');
+    d.dataset.top = y; d.dataset.h = row.h; if (ROWS.indexOf(row) === 0) d.classList.add('frow'); if (o.fx) d.classList.add('hasfx');
     kb.appendChild(d); el[code] = d; defs[code] = o;
     d.addEventListener('mouseenter', () => showKey(code));
     d.addEventListener('click', () => { if (MODKEY[code]) toggleMod(MODKEY[code]); else { sel = code; showKey(code); } });
@@ -254,10 +268,10 @@ function render() {
       if (view === 'cap') { const p = printed(o); h = `<span class="s">${esc(p.shift)}</span><span class="m">${esc(p.main)}</span><span class="g">${esc(p.g)}</span><span class="c">${esc(p.c)}</span><span class="c2">${esc(p.c2)}</span>`; }
       else { const b = m[view], s = m[view + 'S'], p = printed(o); d.classList.toggle('diff', view === 'en' && (up(b) !== p.main || (p.shift && s !== p.shift)));
              h = `<span class="s">${esc(s && s !== up(b) ? s : '')}</span><span class="m">${esc(b)}</span>`; }
-    } else { d.classList.remove('diff'); h = `<span class="m">${esc(o.t)}</span>` + (o.g ? `<span class="g">${esc(o.g)}</span>` : '') + (o.ic ? `<span class="ic">${o.ic}</span>` : ''); }
+    } else { d.classList.remove('diff'); h = `<span class="m">${esc(o.t)}</span>` + (o.g ? `<span class="g">${esc(o.g)}</span>` : '') + (o.ic ? `<span class="ic">${o.ic}</span>` : '') + (o.fx ? `<span class="fx">${esc(o.fx)}</span>` : ''); }
     let lab = '';
-    if (mods.has('Fn') && o.fn) lab = o.fn; else if (hits[code]) lab = hits[code];
-    if (lab && !d.classList.contains('short')) h += `<span class="t">${esc(short(lab))}</span>`;
+    if (mods.has('Fn') && o.fn && !/^то же/.test(o.fn)) lab = o.fn; else if (hits[code]) lab = hits[code];
+    if (lab && !o.fx) h += `<span class="t">${esc(short(lab))}</span>`;
     d.innerHTML = h;
     d.classList.toggle('hl', !!lab);
     d.classList.toggle('mod', mods.has(MODKEY[code]));
@@ -271,7 +285,7 @@ function short(s) { s = s.split(';')[0].replace(/\s*\(.*\)/, ''); return s.lengt
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function showMods(active, hits) {
   let rows = '';
-  if (mods.has('Fn')) for (const [code, o] of Object.entries(defs)) { if (o.fn) rows += `<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>${esc(o.t)}</kbd></td><td>${esc(o.fn)}</td></tr>`; }
+  if (mods.has('Fn')) for (const [code, o] of Object.entries(defs)) { if (o.fn && !/^то же/.test(o.fn)) rows += `<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>${esc(o.t)}</kbd></td><td>${esc(o.fn)}</td></tr>`; }
   else for (const c of COMBOS) if (c.m === active) rows += `<tr><td>${keysHtml(c.m, c.k)}</td><td>${esc(c.d)}</td></tr>`;
   info.innerHTML = `<h3>${esc(active.replace('Ctrl', 'Strg (Ctrl)'))} + …</h3>` + (rows ? `<table>${rows}</table>` : '<div class="note">С этим сочетанием ничего особого не назначено.</div>');
 }
@@ -320,6 +334,11 @@ for (const tr of document.querySelectorAll('tr[data-k]')) {
 document.getElementById('legend').innerHTML = '<span><i style="background:var(--red)"></i>красное — немецкая надпись на клавише</span><span><i style="background:var(--blue)"></i>синее — кириллица</span><span><i style="background:var(--warn)"></i>в English печатается не то, что нарисовано</span><span><i style="background:var(--light)"></i>есть действие</span>';
 // #en / #ru,Win / #cap,Fn: open with a view and held modifiers (handy for links)
 for (const part of decodeURIComponent(location.hash.slice(1)).split(',')) { if (['cap','en','ru','ua'].includes(part)) view = part; else if (['Ctrl','Shift','Alt','Win','Fn'].includes(part)) mods.add(part); }
+document.getElementById('fnlist').innerHTML = Object.entries(defs).filter(([c, o]) => o.fn && !/^то же/.test(o.fn))
+  .map(([c, o]) => `<tr data-k="Fn ${c}"><td><kbd>Fn</kbd><span class="plus">+</span><kbd>${esc(o.t)}</kbd></td><td>${esc(o.fn)}</td></tr>`).join('')
+  + '<tr data-k="Fn F4 F5 F8 F9 F11"><td><kbd>Fn</kbd><span class="plus">+</span><kbd>F4 F5 F8 F9 F11</kbd></td><td>то же, что без Fn (проверено)</td></tr>';
+for (const tr of document.querySelectorAll('#fnlist tr[data-k]')) { const ks = tr.dataset.k.split(' ');
+  tr.addEventListener('mouseenter', () => ks.forEach(k => el[k] && el[k].classList.add('hl'))); tr.addEventListener('mouseleave', () => ks.forEach(k => el[k] && el[k].classList.remove('hl'))); }
 addEventListener('resize', layout); layout(); render();
 </script>
 </body>
