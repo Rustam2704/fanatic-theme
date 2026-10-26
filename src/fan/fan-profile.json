@@ -1,0 +1,28 @@
+{
+    "_help": "MSI Thin GF63 12VE (EC 16R8IMS1.117). Recipes per GhostDeck models.json entry 'MSI Thin GF63 12VE' (verified): performance = Extreme (0xD2=C4, 0xEB=00), balanced = Balanced (0xD2=C1, 0xEB=00), eco = Super Battery / MSI 'ECO-Silent' (0xD2=C2, 0xEB=0F). Fan mode is always 0x8D (curve). speeds[0] = below upTemps[0]; speeds[i] = from upTemps[i-1]; speeds[6] = above upTemps[5]; fan steps down downOffsets[i] C below each threshold. Speed % 0-150 (120+ = max 6666 rpm). NEVER exactly 100 (fan stops). Switch: msi-fan.ps1 mode <name>.",
+    "activeMode": "balanced",
+    "modes": {
+        "performance": {
+            "shiftMode": "C4",
+            "superBattery": false,
+            "upTemps":     [50, 60, 65, 70, 75, 80],
+            "downOffsets": [3, 3, 3, 3, 3, 3],
+            "speeds":      [0, 30, 45, 60, 80, 120, 130]
+        },
+        "balanced": {
+            "shiftMode": "C1",
+            "superBattery": false,
+            "upTemps":     [50, 60, 65, 70, 75, 80],
+            "downOffsets": [3, 3, 3, 3, 3, 3],
+            "speeds":      [0, 11, 24, 42, 61, 150, 150]
+        },
+        "eco": {
+            "shiftMode": "C2",
+            "superBattery": true,
+            "upTemps":     [50, 60, 65, 70, 75, 80],
+            "downOffsets": [3, 3, 3, 3, 3, 3],
+            "speeds":      [0, 11, 20, 35, 55, 90, 120]
+        }
+    }
+}
+

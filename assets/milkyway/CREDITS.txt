@@ -1,0 +1,7 @@
+eso0932a.jpg — "The Milky Way panorama"
+Credit: ESO/S. Brunier
+Source: https://www.eso.org/public/images/eso0932a/
+License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+Requirement: attribution "ESO/S. Brunier" must appear in the pack (README + this file).
+Metadata (incl. a personal contact block) stripped losslessly with jpegtran -copy icc; credit kept here.
+6000x3000 equirectangular 360° all-sky panorama. Used as an optional STATIC backdrop under the starfield.
