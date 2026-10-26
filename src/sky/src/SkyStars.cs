@@ -466,12 +466,25 @@ static partial class SkyStars
             last = f;
         }
     }
+    // The sky must stay UNDER SHELLDLL_DefView (the icon layer) among Progman's children. A click on the desktop once
+    // (Viksa 26.10) left our window above it and every icon vanished. SkyForm refuses z-order moves above the icons
+    // (WM_WINDOWPOSCHANGING); this 2 s check also catches Explorer re-stacking ITS windows below ours.
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    static void KeepUnderIcons(IntPtr progman)
+    {
+        IntPtr defview = FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
+        if (defview == IntPtr.Zero) return;
+        for (IntPtr w = GetWindow(defview, 2 /*GW_HWNDNEXT: lower*/); w != IntPtr.Zero; w = GetWindow(w, 2)) if (w == hwnd) return;
+        Log("sky was above the desktop icons - moved back under SHELLDLL_DefView");
+        Ui(() => SetWindowPos(hwnd, defview, 0, 0, 0, 0, 0x0001 /*NOSIZE*/ | 0x0002 /*NOMOVE*/ | 0x0010 /*NOACTIVATE*/));
+    }
     // Explorer restart: a new Progman appears and our window is left behind (no destroy message reaches us).
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
     static void Watchdog()
     {
         IntPtr progman = FindWindow("Progman", null);
-        if (progman == IntPtr.Zero || GetParent(hwnd) == progman) return;
+        if (progman != IntPtr.Zero && GetParent(hwnd) == progman) { KeepUnderIcons(progman); return; }
+        if (progman == IntPtr.Zero) return;
         if (!IsWindow(hwnd))
         {   // relaunch ourselves (Task Scheduler does not restart on an exit code): the new copy waits for our mutex and the new desktop
             Log("desktop window gone - relaunching");
@@ -674,6 +687,19 @@ static partial class SkyStars
         protected override CreateParams CreateParams
         {
             get { var cp = base.CreateParams; cp.ExStyle |= 0x08000000 /*NOACTIVATE*/ | 0x80 /*TOOLWINDOW*/ | 0x20 /*WS_EX_TRANSPARENT*/; return cp; }
+        }
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 0x0046 /*WM_WINDOWPOSCHANGING*/)
+            {
+                // a z-order move of ours (SWP_NOZORDER clear) may only go directly under the icon layer
+                int flagsAt = IntPtr.Size * 2 + 16, flags = Marshal.ReadInt32(m.LParam, flagsAt);
+                IntPtr parent = GetParent(Handle);
+                IntPtr defview = parent == IntPtr.Zero ? IntPtr.Zero : FindWindowEx(parent, IntPtr.Zero, "SHELLDLL_DefView", null);
+                if ((flags & 0x0004 /*SWP_NOZORDER*/) == 0 && defview != IntPtr.Zero && Marshal.ReadIntPtr(m.LParam, IntPtr.Size) != defview)
+                    Marshal.WriteIntPtr(m.LParam, IntPtr.Size, defview);
+            }
+            base.WndProc(ref m);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
