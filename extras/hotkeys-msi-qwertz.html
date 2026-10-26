@@ -5,140 +5,125 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Горячие клавиши</title>
 <style>
-:root{--bg:#000;--panel:#0b0f12;--line:#1e262c;--fg:#dfe8ee;--text:#c6d0d9;--muted:#6b7b86;--light:#48daf9;--warn:#febc2e;--ok:#28c840;--red:#ff5f57}
+:root{--bg:#000;--panel:#0b0f12;--line:#1e262c;--fg:#dfe8ee;--text:#c6d0d9;--muted:#6b7b86;--light:#48daf9;
+  --red:#ff3b30;--redglow:#ff3b3066;--blue:#5ab8ff;--warn:#febc2e;--ok:#28c840;--cap:#0d0d0f;--cap2:#151518}
 *{box-sizing:border-box}
+html{color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI",system-ui,sans-serif}
-main{max-width:1180px;margin:0 auto;padding:22px 16px 40px}
+main{max-width:1200px;margin:0 auto;padding:20px 16px 48px}
 h1{margin:0 0 4px;color:var(--fg);font-size:26px;font-weight:600}
-.sub{color:var(--muted);margin-bottom:20px}
-.grid{display:grid;grid-auto-flow:dense;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:14px}
-section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.sub{color:var(--muted);margin-bottom:16px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:0 0 12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button,.mods button{background:var(--panel);color:var(--text);border:0;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:#12171a;color:var(--light);box-shadow:inset 0 -2px 0 var(--light)}
+.mods{display:inline-flex;gap:6px;flex-wrap:wrap}
+.mods button{border:1px solid var(--line);border-radius:8px}
+.mods button.on{color:#000;background:var(--light);border-color:var(--light)}
+.lbl{color:var(--muted);font-size:13px}
+.kbwrap{overflow-x:auto;background:#050506;border:1px solid var(--line);border-radius:12px;padding:12px}
+#kb{position:relative;min-width:780px;width:100%}
+.k{position:absolute;border:1.5px solid var(--red);border-radius:7px;background:linear-gradient(var(--cap2),var(--cap));
+  box-shadow:0 0 6px var(--redglow);cursor:pointer;overflow:hidden;user-select:none;transition:border-color .12s,box-shadow .12s,background .12s}
+.k:hover,.k.sel{border-color:var(--light);box-shadow:0 0 10px #48daf988}
+.k.down{background:#0f2a33;border-color:var(--light)}
+.k.hl{border-color:var(--light);box-shadow:0 0 12px #48daf9aa;background:#06222b}
+.k.mod{border-color:var(--light);background:#0b2f3a}
+.k.dim{opacity:.35}
+.k .m{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;color:var(--red);font:600 clamp(10px,1.35vw,17px) Consolas,monospace;white-space:nowrap}
+.k .s{position:absolute;left:5px;top:2px;color:var(--red);font:clamp(8px,.95vw,12px) Consolas,monospace}
+.k .g{position:absolute;right:5px;bottom:2px;color:var(--red);font:clamp(8px,.95vw,12px) Consolas,monospace;opacity:.85}
+.k .c{position:absolute;right:5px;top:2px;color:var(--blue);font:600 clamp(8px,1vw,13px) "Segoe UI",sans-serif}
+.k .c2{position:absolute;right:5px;bottom:2px;color:var(--blue);font:600 clamp(8px,1vw,13px) "Segoe UI",sans-serif}
+.k .ic{position:absolute;left:0;right:0;bottom:3px;text-align:center;color:var(--red);font:clamp(8px,1vw,12px) "Segoe UI Symbol","Segoe UI",sans-serif}
+.k .t{position:absolute;left:3px;right:3px;bottom:2px;text-align:center;color:var(--light);font:600 clamp(7px,.75vw,10.5px) "Segoe UI",sans-serif;line-height:1.1;white-space:normal;overflow-wrap:anywhere}
+.k.small .m{font-size:clamp(8px,.9vw,12px)}
+.k.hl .m{top:30%;font-size:clamp(9px,1.05vw,14px)}
+.k.hl .c,.k.hl .c2,.k.hl .g,.k.hl .ic,.k.hl .s{display:none}
+.k.short .ic{left:auto;right:4px;bottom:auto;top:50%;transform:translateY(-50%)}
+.k.short .g{display:none}
+.view-out .k .m{color:var(--fg)} .view-out .k .s{color:var(--muted)}
+.view-out .k.diff .m,.view-out .k.diff .s{color:var(--warn)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;color:var(--muted);font-size:13px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+#info{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-height:96px}
+#info h3{margin:0 0 6px;color:var(--light);font-size:16px;font-weight:600}
+#info table{border-collapse:collapse}
+#info td{padding:3px 14px 3px 0;vertical-align:top}
+#info td:first-child{color:var(--muted);white-space:nowrap}
+.ch{font:15px Consolas,monospace;color:var(--fg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-top:16px;grid-auto-flow:dense}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
 section.wide{grid-column:1/-1}
-h2{margin:0 0 10px;color:var(--light);font-size:16px;font-weight:600;letter-spacing:.2px}
-table{width:100%;border-collapse:collapse}
-td,th{padding:6px 6px;border-top:1px solid var(--line);vertical-align:top;text-align:left}
-tr:first-child td,tr:first-child th{border-top:0}
-th{color:var(--muted);font-weight:500;font-size:13px}
-td:first-child{white-space:nowrap;width:1%;padding-right:14px}
+h2{margin:0 0 8px;color:var(--light);font-size:16px;font-weight:600}
+table.list{width:100%;border-collapse:collapse}
+table.list td,table.list th{padding:5px 6px;border-top:1px solid var(--line);vertical-align:top;text-align:left}
+table.list tr:first-child td,table.list tr:first-child th{border-top:0}
+table.list th{color:var(--muted);font-weight:500;font-size:13px}
+table.list td:first-child{white-space:nowrap;width:1%;padding-right:14px}
+table.list tr[data-k]{cursor:default}
+table.list tr[data-k]:hover td{background:#0f1a1f}
 kbd{display:inline-block;min-width:24px;padding:1px 7px;border:1px solid #3a4852;border-bottom-width:2px;border-radius:5px;background:#121a20;color:var(--fg);font:13px/1.5 Consolas,monospace;text-align:center}
 .plus{color:var(--muted);margin:0 2px}
 .note{color:var(--muted);font-size:13px;margin-top:8px}
-.ch{font:15px Consolas,monospace;color:var(--fg)}
-.de{color:var(--warn)}
-.off{color:var(--red)}
-.mono{font-family:Consolas,monospace}
-.keys{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 6px}
-.key{border:1px solid #3a4852;border-bottom-width:3px;border-radius:7px;background:#121a20;padding:6px 8px;min-width:96px}
-.key b{display:block;color:var(--fg);font:600 13px Consolas,monospace}
-.key span{display:block;color:var(--text);font-size:13px}
-.key.na span{color:var(--muted)}
+.off{color:#ff5f57}
 </style>
 </head>
 <body>
 <main>
 <h1>Горячие клавиши</h1>
-<div class="sub">MSI, немецкая клавиатура (QWERTZ) · раскладки Українська / Русский / English · всё в этой шпаргалке проверено на этой машине</div>
+<div class="sub">Клавиатура MSI этого ноутбука (немецкая, с наклейками Y/Z и кириллицей). Наведите на клавишу — что она делает; нажмите настоящую клавишу — она подсветится здесь.</div>
+
+<div class="bar">
+  <span class="lbl">Показать на клавишах:</span>
+  <div class="seg" id="views">
+    <button data-v="cap" class="on">как нарисовано</button><button data-v="en">English</button><button data-v="ru">Русская</button><button data-v="ua">Українська</button>
+  </div>
+  <span class="lbl">Зажать:</span>
+  <div class="mods" id="mods">
+    <button data-m="Ctrl">Strg (Ctrl)</button><button data-m="Shift">Shift</button><button data-m="Alt">Alt</button><button data-m="Win">Win</button><button data-m="Fn">Fn</button>
+  </div>
+</div>
+
+<div class="kbwrap"><div id="kb"></div></div>
+<div class="legend" id="legend"></div>
+<div id="info"><h3>Наведите на клавишу или зажмите Ctrl / Alt / Win / Fn</h3><div class="note">Подсветятся клавиши, которые с ними что-то делают, с подписью прямо на клавише.</div></div>
 
 <div class="grid">
 
 <section>
 <h2>Раскладка</h2>
-<table>
-<tr><td><kbd>Alt</kbd><span class="plus">+</span><kbd>Shift</kbd></td><td>украинская ↔ последняя из RU / EN<br><span class="note">только левый Alt</span></td></tr>
-<tr><td><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Shift</kbd></td><td>русская ↔ английская</td></tr>
-<tr><td>клик по языку</td><td>UA → RU → EN → UA по кругу</td></tr>
-<tr><td>правый клик по языку</td><td>меню языков</td></tr>
+<table class="list">
+<tr data-k="AltLeft ShiftLeft"><td><kbd>Alt</kbd><span class="plus">+</span><kbd>Shift</kbd></td><td>украинская ↔ последняя из русской / английской (только левый Alt)</td></tr>
+<tr data-k="ControlLeft ShiftLeft"><td><kbd>Strg</kbd><span class="plus">+</span><kbd>Shift</kbd></td><td>русская ↔ английская</td></tr>
+<tr><td>клик по языку на панели</td><td>UA → RU → EN → UA по кругу; правый клик — меню языков</td></tr>
 </table>
-<div class="note">После переключения на экране на секунду появляется код раскладки (UA / RU / EN). На клавише написано <kbd>Strg</kbd> — это Ctrl.</div>
-</section>
-
-<section>
-<h2>Fn — громкость и яркость (на стрелках)</h2>
-<table>
-<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>←</kbd></td><td>тише</td></tr>
-<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>→</kbd></td><td>громче</td></tr>
-<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>Ende</kbd></td><td>звук выкл / вкл</td></tr>
-<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>↑</kbd></td><td>экран ярче</td></tr>
-<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>↓</kbd></td><td>экран темнее</td></tr>
-</table>
-<div class="note">Fn — справа от Alt Gr, между клавишей <kbd>&lt; &gt;</kbd> и правым Strg. Значки нарисованы на самих стрелках.</div>
-</section>
-
-<section>
-<h2>Fn — верхний ряд</h2>
-<div class="keys">
-<div class="key"><b>Fn + F2</b><span>второй экран / проектор</span></div>
-<div class="key"><b>Fn + F3</b><span>тачпад выкл / вкл</span></div>
-<div class="key"><b>Fn + F6</b><span>камера выкл / вкл</span></div>
-<div class="key"><b>Fn + F10</b><span>режим «в самолёте»</span></div>
-<div class="key"><b>Fn + F12</b><span>сон</span></div>
-<div class="key na"><b>Fn + F7</b><span>кнопка MSI Center — программа не установлена, ничего не делает</span></div>
-</div>
-<div class="note">Функции — по значкам на клавишах этой модели (MSI GF63). Остальные F-клавиши без Fn работают как обычные F1–F12.</div>
-</section>
-
-<section>
-<h2>Немецкие надписи на клавишах</h2>
-<table>
-<tr><td><kbd>Strg</kbd></td><td>Ctrl</td></tr>
-<tr><td><kbd>Entf</kbd></td><td>Delete (удалить справа)</td></tr>
-<tr><td><kbd>Einfg</kbd></td><td>Insert — вторая надпись на той же клавише, через <kbd>Fn</kbd></td></tr>
-<tr><td><kbd>Pos1</kbd> / <kbd>Ende</kbd></td><td>Home / End (в начало / в конец строки)</td></tr>
-<tr><td><kbd>Bild ↑</kbd> / <kbd>Bild ↓</kbd></td><td>Page Up / Page Down</td></tr>
-<tr><td><kbd>Druck</kbd></td><td>Print Screen</td></tr>
-<tr><td><kbd>Alt Gr</kbd></td><td>правый Alt (для раскладки не используется)</td></tr>
-</table>
-</section>
-
-<section class="wide">
-<h2>Знаки: что печатает клавиша, если на ней нарисовано другое</h2>
-<table>
-<tr><th>на клавише</th><th>English</th><th>Русский</th><th>Українська</th></tr>
-<tr><td><span class="ch de">^ °</span> (слева от 1)</td><td class="ch">` ~</td><td class="ch">ё Ё</td><td class="ch">ё Ё</td></tr>
-<tr><td><span class="ch de">2 "</span></td><td class="ch">2 @</td><td class="ch">2 "</td><td class="ch">2 "</td></tr>
-<tr><td><span class="ch de">3 §</span></td><td class="ch">3 #</td><td class="ch">3 №</td><td class="ch">3 №</td></tr>
-<tr><td><span class="ch de">4 $</span></td><td class="ch">4 $</td><td class="ch">4 ;</td><td class="ch">4 ;</td></tr>
-<tr><td><span class="ch de">6 &amp;</span></td><td class="ch">6 ^</td><td class="ch">6 :</td><td class="ch">6 :</td></tr>
-<tr><td><span class="ch de">7 /</span></td><td class="ch">7 &amp;</td><td class="ch">7 ?</td><td class="ch">7 ?</td></tr>
-<tr><td><span class="ch de">8 (</span> · <span class="ch de">9 )</span> · <span class="ch de">0 =</span></td><td class="ch">8 * · 9 ( · 0 )</td><td class="ch">8 * · 9 ( · 0 )</td><td class="ch">8 * · 9 ( · 0 )</td></tr>
-<tr><td><span class="ch de">ß ?</span></td><td class="ch">- _</td><td class="ch">- _</td><td class="ch">- _</td></tr>
-<tr><td><span class="ch de">´ `</span></td><td class="ch">= +</td><td class="ch">= +</td><td class="ch">= +</td></tr>
-<tr><td><span class="ch de">Ü</span></td><td class="ch">[ {</td><td class="ch">х Х</td><td class="ch">х Х</td></tr>
-<tr><td><span class="ch de">+ * ~</span></td><td class="ch">] }</td><td class="ch">ъ Ъ</td><td class="ch">ї Ї</td></tr>
-<tr><td><span class="ch de"># '</span> (над Enter)</td><td class="ch">\ |</td><td class="ch">\ /</td><td class="ch">\ /</td></tr>
-<tr><td><span class="ch de">Ö</span></td><td class="ch">; :</td><td class="ch">ж Ж</td><td class="ch">ж Ж</td></tr>
-<tr><td><span class="ch de">Ä</span></td><td class="ch">' "</td><td class="ch">э Э</td><td class="ch">є Є</td></tr>
-<tr><td><span class="ch de">, ;</span></td><td class="ch">, &lt;</td><td class="ch">б Б</td><td class="ch">б Б</td></tr>
-<tr><td><span class="ch de">. :</span></td><td class="ch">. &gt;</td><td class="ch">ю Ю</td><td class="ch">ю Ю</td></tr>
-<tr><td><span class="ch de">- _</span> (справа от точки)</td><td class="ch">/ ?</td><td class="ch">. ,</td><td class="ch">. ,</td></tr>
-<tr><td><span class="ch de">&lt; &gt; |</span> (справа от Alt Gr)</td><td class="ch">\ |</td><td class="ch">\ /</td><td class="ch">ґ Ґ</td></tr>
-</table>
-<div class="note">Первый знак — без Shift, второй — с Shift. Буквы Y и Z переклеены под английскую раскладку: печатается то, что на наклейке. Кириллица печатается так, как подписано синим на клавишах.<br>
-В украинской раскладке Windows <b>нет апострофа</b>: для «'» переключитесь на English (там это клавиша <span class="ch de">Ä</span>).</div>
+<div class="note">После переключения на секунду появляется код раскладки (UA / RU / EN).</div>
 </section>
 
 <section>
 <h2>Мышь и тачпад</h2>
-<table>
-<tr><td><kbd>Alt</kbd><span class="plus">+</span>тянуть левой</td><td>двигать окно за любое место</td></tr>
-<tr><td><kbd>Alt</kbd><span class="plus">+</span>тянуть правой</td><td>менять размер окна</td></tr>
-<tr><td><kbd>Alt</kbd><span class="plus">+</span>средняя кнопка</td><td>меню окна</td></tr>
+<table class="list">
+<tr data-k="AltLeft AltRight"><td><kbd>Alt</kbd><span class="plus">+</span>тянуть левой</td><td>двигать окно за любое место</td></tr>
+<tr data-k="AltLeft AltRight"><td><kbd>Alt</kbd><span class="plus">+</span>тянуть правой</td><td>менять размер окна</td></tr>
+<tr data-k="AltLeft AltRight"><td><kbd>Alt</kbd><span class="plus">+</span>средняя кнопка</td><td>меню окна</td></tr>
 <tr><td>окно к краю экрана</td><td>прилипает к половине / углу</td></tr>
 <tr><td>тап двумя пальцами</td><td>правый клик</td></tr>
 <tr><td>нажать тачпад двумя пальцами</td><td>средний клик (ссылка в новой вкладке)</td></tr>
 <tr><td>тап тремя пальцами</td><td class="off">выключен</td></tr>
 </table>
-<div class="note">Alt — левый или правый.</div>
+<div class="note">Alt — левый или правый (Alt Gr тоже).</div>
 </section>
 
 <section class="wide">
 <h2>Панель задач (клик по значкам)</h2>
-<table>
+<table class="list">
 <tr><th>значок</th><th>левый клик</th><th>правый клик</th></tr>
 <tr><td>Wi-Fi / кабель + пинг</td><td>список сетей</td><td>сети Wi-Fi, параметры сети, сетевые подключения</td></tr>
 <tr><td>процессор, память</td><td>Диспетчер задач</td><td>Диспетчер задач, Монитор ресурсов</td></tr>
 <tr><td>температура CPU</td><td>обороты и режим вентилятора</td><td>режим Нагрузка / Баланс / Экономия, подсветка клавиатуры, Cooler Boost</td></tr>
-<tr><td>погода</td><td>прогноз по часам на 24 часа (колесо — листать), кнопка «обновить место»</td><td>прогноз, обновить погоду</td></tr>
+<tr><td>погода</td><td>прогноз по часам на 24 часа (колесо — листать), «обновить место»</td><td>прогноз, обновить погоду</td></tr>
 <tr><td>батарея</td><td>заряд, яркость, режим питания</td><td>параметры питания и сна, экономия заряда</td></tr>
 <tr><td>звук</td><td>громкость и устройство вывода</td><td>регулятор Windows, микшер, устройства, параметры звука</td></tr>
 <tr><td>язык</td><td>следующая раскладка</td><td>меню языков</td></tr>
@@ -148,40 +133,194 @@ kbd{display:inline-block;min-width:24px;padding:1px 7px;border:1px solid #3a4852
 <div class="note">Правый клик по рабочему столу → <b>«Небо…»</b>: звёзды, созвездия, Млечный Путь, язык.</div>
 </section>
 
-<section>
-<h2>Windows</h2>
-<table>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>V</kbd></td><td>история буфера обмена</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>Shift</kbd><span class="plus">+</span><kbd>S</kbd></td><td>скриншот области</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>E</kbd></td><td>Проводник</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>D</kbd></td><td>показать рабочий стол</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>L</kbd></td><td>заблокировать</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span>стрелки</td><td>окно на половину / во весь экран / свернуть</td></tr>
-<tr><td><kbd>Alt</kbd><span class="plus">+</span><kbd>Tab</kbd></td><td>переключить окно</td></tr>
-<tr><td><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Shift</kbd><span class="plus">+</span><kbd>Esc</kbd></td><td>Диспетчер задач</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>.</kbd></td><td>эмодзи и символы</td></tr>
-<tr><td><kbd>Win</kbd><span class="plus">+</span><kbd>H</kbd></td><td>голосовой ввод</td></tr>
-</table>
-</section>
-
-<section>
-<h2>Поиск файлов</h2>
-<table>
-<tr><td><kbd>Ctrl</kbd><span class="plus">+</span><kbd>Alt</kbd><span class="plus">+</span><kbd>F</kbd></td><td>Everything — мгновенный поиск по всем дискам</td></tr>
-</table>
-</section>
-
 
 <section>
 <h2>Специально выключено</h2>
-<table>
-<tr><td><kbd>Shift</kbd> ×5</td><td>залипание клавиш не всплывает</td></tr>
-<tr><td>долго держать <kbd>Shift</kbd></td><td>фильтр клавиш не всплывает</td></tr>
-<tr><td>Windows-переключение языка</td><td>заменено на Alt+Shift / Ctrl+Shift выше</td></tr>
+<table class="list">
+<tr data-k="ShiftLeft"><td><kbd>Shift</kbd> ×5</td><td>залипание клавиш не всплывает</td></tr>
+<tr data-k="ShiftRight"><td>долго держать <kbd>Shift</kbd></td><td>фильтр клавиш не всплывает</td></tr>
+<tr data-k="PrintScreen"><td><kbd>Druck</kbd> один</td><td>«Ножницы» не установлены: Druck просто кладёт снимок экрана в буфер</td></tr>
 </table>
 </section>
 
 </div>
+<div class="note" style="margin-top:14px">Проверено на этой машине: что печатает каждая клавиша в EN / RU / UA (взято у самой Windows), Alt-перетаскивание (AltSnap), переключение раскладок, Everything, «Ножницы». Функции Fn — по значкам на клавишах этой модели.</div>
 </main>
+
+<script>
+const KMAP = {"29": {"de": "^", "deS": "°", "en": "`", "enS": "~", "ru": "ё", "ruS": "Ё", "ua": "ё", "uaS": "Ё"}, "02": {"de": "1", "deS": "!", "en": "1", "enS": "!", "ru": "1", "ruS": "!", "ua": "1", "uaS": "!"}, "03": {"de": "2", "deS": "\"", "en": "2", "enS": "@", "ru": "2", "ruS": "\"", "ua": "2", "uaS": "\""}, "04": {"de": "3", "deS": "§", "en": "3", "enS": "#", "ru": "3", "ruS": "№", "ua": "3", "uaS": "№"}, "05": {"de": "4", "deS": "$", "en": "4", "enS": "$", "ru": "4", "ruS": ";", "ua": "4", "uaS": ";"}, "06": {"de": "5", "deS": "%", "en": "5", "enS": "%", "ru": "5", "ruS": "%", "ua": "5", "uaS": "%"}, "07": {"de": "6", "deS": "&", "en": "6", "enS": "^", "ru": "6", "ruS": ":", "ua": "6", "uaS": ":"}, "08": {"de": "7", "deS": "/", "en": "7", "enS": "&", "ru": "7", "ruS": "?", "ua": "7", "uaS": "?"}, "09": {"de": "8", "deS": "(", "en": "8", "enS": "*", "ru": "8", "ruS": "*", "ua": "8", "uaS": "*"}, "0A": {"de": "9", "deS": ")", "en": "9", "enS": "(", "ru": "9", "ruS": "(", "ua": "9", "uaS": "("}, "0B": {"de": "0", "deS": "=", "en": "0", "enS": ")", "ru": "0", "ruS": ")", "ua": "0", "uaS": ")"}, "0C": {"de": "ß", "deS": "?", "en": "-", "enS": "_", "ru": "-", "ruS": "_", "ua": "-", "uaS": "_"}, "0D": {"de": "´", "deS": "`", "en": "=", "enS": "+", "ru": "=", "ruS": "+", "ua": "=", "uaS": "+"}, "10": {"de": "q", "deS": "Q", "en": "q", "enS": "Q", "ru": "й", "ruS": "Й", "ua": "й", "uaS": "Й"}, "11": {"de": "w", "deS": "W", "en": "w", "enS": "W", "ru": "ц", "ruS": "Ц", "ua": "ц", "uaS": "Ц"}, "12": {"de": "e", "deS": "E", "en": "e", "enS": "E", "ru": "у", "ruS": "У", "ua": "у", "uaS": "У"}, "13": {"de": "r", "deS": "R", "en": "r", "enS": "R", "ru": "к", "ruS": "К", "ua": "к", "uaS": "К"}, "14": {"de": "t", "deS": "T", "en": "t", "enS": "T", "ru": "е", "ruS": "Е", "ua": "е", "uaS": "Е"}, "15": {"de": "z", "deS": "Z", "en": "y", "enS": "Y", "ru": "н", "ruS": "Н", "ua": "н", "uaS": "Н"}, "16": {"de": "u", "deS": "U", "en": "u", "enS": "U", "ru": "г", "ruS": "Г", "ua": "г", "uaS": "Г"}, "17": {"de": "i", "deS": "I", "en": "i", "enS": "I", "ru": "ш", "ruS": "Ш", "ua": "ш", "uaS": "Ш"}, "18": {"de": "o", "deS": "O", "en": "o", "enS": "O", "ru": "щ", "ruS": "Щ", "ua": "щ", "uaS": "Щ"}, "19": {"de": "p", "deS": "P", "en": "p", "enS": "P", "ru": "з", "ruS": "З", "ua": "з", "uaS": "З"}, "1A": {"de": "ü", "deS": "Ü", "en": "[", "enS": "{", "ru": "х", "ruS": "Х", "ua": "х", "uaS": "Х"}, "1B": {"de": "+", "deS": "*", "en": "]", "enS": "}", "ru": "ъ", "ruS": "Ъ", "ua": "ї", "uaS": "Ї"}, "2B": {"de": "#", "deS": "'", "en": "\\", "enS": "|", "ru": "\\", "ruS": "/", "ua": "\\", "uaS": "/"}, "1E": {"de": "a", "deS": "A", "en": "a", "enS": "A", "ru": "ф", "ruS": "Ф", "ua": "ф", "uaS": "Ф"}, "1F": {"de": "s", "deS": "S", "en": "s", "enS": "S", "ru": "ы", "ruS": "Ы", "ua": "і", "uaS": "І"}, "20": {"de": "d", "deS": "D", "en": "d", "enS": "D", "ru": "в", "ruS": "В", "ua": "в", "uaS": "В"}, "21": {"de": "f", "deS": "F", "en": "f", "enS": "F", "ru": "а", "ruS": "А", "ua": "а", "uaS": "А"}, "22": {"de": "g", "deS": "G", "en": "g", "enS": "G", "ru": "п", "ruS": "П", "ua": "п", "uaS": "П"}, "23": {"de": "h", "deS": "H", "en": "h", "enS": "H", "ru": "р", "ruS": "Р", "ua": "р", "uaS": "Р"}, "24": {"de": "j", "deS": "J", "en": "j", "enS": "J", "ru": "о", "ruS": "О", "ua": "о", "uaS": "О"}, "25": {"de": "k", "deS": "K", "en": "k", "enS": "K", "ru": "л", "ruS": "Л", "ua": "л", "uaS": "Л"}, "26": {"de": "l", "deS": "L", "en": "l", "enS": "L", "ru": "д", "ruS": "Д", "ua": "д", "uaS": "Д"}, "27": {"de": "ö", "deS": "Ö", "en": ";", "enS": ":", "ru": "ж", "ruS": "Ж", "ua": "ж", "uaS": "Ж"}, "28": {"de": "ä", "deS": "Ä", "en": "'", "enS": "\"", "ru": "э", "ruS": "Э", "ua": "є", "uaS": "Є"}, "56": {"de": "<", "deS": ">", "en": "\\", "enS": "|", "ru": "\\", "ruS": "/", "ua": "ґ", "uaS": "Ґ"}, "2C": {"de": "y", "deS": "Y", "en": "z", "enS": "Z", "ru": "я", "ruS": "Я", "ua": "я", "uaS": "Я"}, "2D": {"de": "x", "deS": "X", "en": "x", "enS": "X", "ru": "ч", "ruS": "Ч", "ua": "ч", "uaS": "Ч"}, "2E": {"de": "c", "deS": "C", "en": "c", "enS": "C", "ru": "с", "ruS": "С", "ua": "с", "uaS": "С"}, "2F": {"de": "v", "deS": "V", "en": "v", "enS": "V", "ru": "м", "ruS": "М", "ua": "м", "uaS": "М"}, "30": {"de": "b", "deS": "B", "en": "b", "enS": "B", "ru": "и", "ruS": "И", "ua": "и", "uaS": "И"}, "31": {"de": "n", "deS": "N", "en": "n", "enS": "N", "ru": "т", "ruS": "Т", "ua": "т", "uaS": "Т"}, "32": {"de": "m", "deS": "M", "en": "m", "enS": "M", "ru": "ь", "ruS": "Ь", "ua": "ь", "uaS": "Ь"}, "33": {"de": ",", "deS": ";", "en": ",", "enS": "<", "ru": "б", "ruS": "Б", "ua": "б", "uaS": "Б"}, "34": {"de": ".", "deS": ":", "en": ".", "enS": ">", "ru": "ю", "ruS": "Ю", "ua": "ю", "uaS": "Ю"}, "35": {"de": "-", "deS": "_", "en": "/", "enS": "?", "ru": ".", "ruS": ",", "ua": ".", "uaS": ","}};
+const SHOW_CLAUDE = false;
+// ---- physical layout of this keyboard (from the photo): 16 units wide; rows top to bottom ----
+// key: [code, width, opts]  opts: sc = scan code (character keys), t = printed text, ic = Fn icon text, fn = Fn action
+const ALT_GR = {"03":"²","04":"³","08":"{","09":"[","0A":"]","0B":"}","0C":"\\","10":"@","12":"€","1B":"~","32":"µ","56":"|"};
+const STICKER = {"15":"Y","2C":"Z"};   // Y/Z stickers over the German Z/Y
+const FW = 16/15;
+const ROWS = [
+  {h:.62, keys:[["Escape",FW,{t:"Esc"}],["F1",FW,{t:"F1"}],["F2",FW,{t:"F2",ic:"▭▭",fn:"второй экран / проектор (меню как Win+P)"}],["F3",FW,{t:"F3",ic:"▢̸",fn:"тачпад выкл / вкл"}],
+    ["F4",FW,{t:"F4"}],["F5",FW,{t:"F5"}],["F6",FW,{t:"F6",ic:"◉",fn:"камера выкл / вкл"}],["F7",FW,{t:"F7",ic:"◔",fn:"кнопка MSI Center — программа не установлена, ничего не делает"}],
+    ["F8",FW,{t:"F8"}],["F9",FW,{t:"F9"}],["F10",FW,{t:"F10",ic:"✈",fn:"режим «в самолёте»"}],["F11",FW,{t:"F11"}],["F12",FW,{t:"F12",ic:"☾",fn:"сон"}],
+    ["PrintScreen",FW,{t:"Druck"}],["Delete",FW,{t:"Entf",g:"Einfg",ic:"",fn:"Einfg = Insert (вставка / замена)"}]]},
+  {h:1, keys:[["Backquote",1,{sc:"29"}],["Digit1",1,{sc:"02"}],["Digit2",1,{sc:"03"}],["Digit3",1,{sc:"04"}],["Digit4",1,{sc:"05"}],["Digit5",1,{sc:"06"}],
+    ["Digit6",1,{sc:"07"}],["Digit7",1,{sc:"08"}],["Digit8",1,{sc:"09"}],["Digit9",1,{sc:"0A"}],["Digit0",1,{sc:"0B"}],["Minus",1,{sc:"0C"}],["Equal",1,{sc:"0D"}],
+    ["Backspace",2,{t:"⟵"}],["Home",1,{t:"Pos1"}]]},
+  {h:1, keys:[["Tab",1.5,{t:"⇆"}],["KeyQ",1,{sc:"10"}],["KeyW",1,{sc:"11"}],["KeyE",1,{sc:"12"}],["KeyR",1,{sc:"13"}],["KeyT",1,{sc:"14"}],["KeyY",1,{sc:"15"}],
+    ["KeyU",1,{sc:"16"}],["KeyI",1,{sc:"17"}],["KeyO",1,{sc:"18"}],["KeyP",1,{sc:"19"}],["BracketLeft",1,{sc:"1A"}],["BracketRight",1,{sc:"1B"}],["Backslash",1.5,{sc:"2B"}],
+    ["PageUp",1,{t:"Bild↑",ic:"⌨☀+",fn:"подсветка клавиатуры ярче (по значку)"}]]},
+  {h:1, keys:[["CapsLock",1.75,{t:"⇩"}],["KeyA",1,{sc:"1E"}],["KeyS",1,{sc:"1F"}],["KeyD",1,{sc:"20"}],["KeyF",1,{sc:"21"}],["KeyG",1,{sc:"22"}],["KeyH",1,{sc:"23"}],
+    ["KeyJ",1,{sc:"24"}],["KeyK",1,{sc:"25"}],["KeyL",1,{sc:"26"}],["Semicolon",1,{sc:"27"}],["Quote",1,{sc:"28"}],["Enter",2.25,{t:"↵"}],
+    ["PageDown",1,{t:"Bild↓",ic:"⌨☀−",fn:"подсветка клавиатуры темнее (по значку)"}]]},
+  {h:1, keys:[["ShiftLeft",2.25,{t:"⇧"}],["KeyZ",1,{sc:"2C"}],["KeyX",1,{sc:"2D"}],["KeyC",1,{sc:"2E"}],["KeyV",1,{sc:"2F"}],["KeyB",1,{sc:"30"}],["KeyN",1,{sc:"31"}],
+    ["KeyM",1,{sc:"32"}],["Comma",1,{sc:"33"}],["Period",1,{sc:"34"}],["Slash",1,{sc:"35"}],["ShiftRight",1.75,{t:"⇧"}],
+    ["ArrowUp",1,{t:"↑",ic:"☀+",fn:"экран ярче"}],["End",1,{t:"Ende",ic:"🔇",fn:"звук выкл / вкл"}]]},
+  {h:1, keys:[["ControlLeft",1.5,{t:"Strg"}],["MetaLeft",1,{t:"⊞"}],["AltLeft",1,{t:"Alt"}],["Space",5.5,{t:""}],["AltRight",1,{t:"Alt Gr",small:1}],
+    ["IntlBackslash",1,{sc:"56"}],["Fn",1,{t:"Fn"}],["ControlRight",1,{t:"Strg"}],
+    ["ArrowLeft",1,{t:"←",ic:"🔉",fn:"тише"}],["ArrowDown",1,{t:"↓",ic:"☀−",fn:"экран темнее"}],["ArrowRight",1,{t:"→",ic:"🔊",fn:"громче"}]]}
+];
+const NAMES = {Escape:"Esc",PrintScreen:"Druck (Print Screen)",Delete:"Entf (Delete) / Einfg (Insert)",Backspace:"Backspace — стереть слева",Home:"Pos1 (Home) — в начало строки",
+  Tab:"Tab",PageUp:"Bild↑ (Page Up)",CapsLock:"Caps Lock",Enter:"Enter",PageDown:"Bild↓ (Page Down)",ShiftLeft:"Shift левый",ShiftRight:"Shift правый",
+  ArrowUp:"↑",End:"Ende (End) — в конец строки",ControlLeft:"Strg = Ctrl (левый)",MetaLeft:"Win",AltLeft:"Alt левый",Space:"Пробел",AltRight:"Alt Gr (правый Alt)",
+  Fn:"Fn",ControlRight:"Strg = Ctrl (правый)",ArrowLeft:"←",ArrowDown:"↓",ArrowRight:"→"};
+// combos: m = modifiers (sorted names), k = key code, d = what it does
+const COMBOS = [
+  {m:"Alt+Shift",k:"AltLeft",d:"раскладка: украинская ↔ последняя из RU / EN (только левый Alt)"},
+  {m:"Ctrl+Shift",k:"ShiftLeft",d:"раскладка: русская ↔ английская"},
+  {m:"Ctrl+Alt",k:"KeyF",d:"Everything — мгновенный поиск файлов"},
+  {m:"Ctrl+Alt",k:"Delete",d:"экран безопасности (блокировка, Диспетчер задач)"},
+  {m:"Ctrl+Shift",k:"Escape",d:"Диспетчер задач"},
+  {m:"Win",k:"KeyV",d:"история буфера обмена"},
+  {m:"Win",k:"KeyE",d:"Проводник"},
+  {m:"Win",k:"KeyD",d:"показать рабочий стол"},
+  {m:"Win",k:"KeyL",d:"заблокировать"},
+  {m:"Win",k:"KeyR",d:"«Выполнить»"},
+  {m:"Win",k:"KeyI",d:"Параметры"},
+  {m:"Win",k:"Period",d:"эмодзи и символы"},
+  {m:"Win",k:"PrintScreen",d:"снимок экрана в файл (Изображения\\Снимки экрана)"},
+  {m:"Win",k:"ArrowLeft",d:"окно на левую половину"},
+  {m:"Win",k:"ArrowRight",d:"окно на правую половину"},
+  {m:"Win",k:"ArrowUp",d:"окно во весь экран"},
+  {m:"Win",k:"ArrowDown",d:"свернуть / вернуть окно"},
+  {m:"Alt",k:"Tab",d:"переключить окно"},
+  {m:"Alt",k:"F4",d:"закрыть окно"},
+  {m:"Alt",k:"PrintScreen",d:"снимок активного окна в буфер"},
+  {m:"",k:"PrintScreen",d:"снимок всего экрана в буфер"},
+  {m:"Ctrl",k:"KeyC",d:"копировать"},{m:"Ctrl",k:"KeyV",d:"вставить"},{m:"Ctrl",k:"KeyX",d:"вырезать"},
+  {m:"Ctrl",k:"KeyZ",d:"отменить"},{m:"Ctrl",k:"KeyY",d:"повторить"},{m:"Ctrl",k:"KeyA",d:"выделить всё"},
+  {m:"Ctrl",k:"KeyS",d:"сохранить"},{m:"Ctrl",k:"KeyF",d:"найти"},{m:"Ctrl",k:"KeyT",d:"новая вкладка"},{m:"Ctrl",k:"KeyW",d:"закрыть вкладку"},
+];
+
+const kb = document.getElementById('kb'), info = document.getElementById('info');
+const GAP = .12, el = {}, defs = {};
+let view = 'cap', mods = new Set(), sel = null;
+let y = 0;
+for (const row of ROWS) {
+  let x = 0;
+  for (const [code, w, o] of row.keys) {
+    const d = document.createElement('div'); d.className = 'k' + (o.small ? ' small' : '');
+    d.style.left = (x / 16 * 100) + '%'; d.style.width = `calc(${w / 16 * 100}% - ${GAP * 100 / 16}%)`;
+    d.dataset.top = y; d.dataset.h = row.h; if (row.h < 1) d.classList.add('short');
+    kb.appendChild(d); el[code] = d; defs[code] = o;
+    d.addEventListener('mouseenter', () => showKey(code));
+    d.addEventListener('click', () => { if (MODKEY[code]) toggleMod(MODKEY[code]); else { sel = code; showKey(code); } });
+    x += w;
+  }
+  y += row.h + GAP;
+}
+const TOTAL_H = y - GAP;
+function layout() {
+  const unit = kb.clientWidth / 16;
+  kb.style.height = (TOTAL_H * unit) + 'px';
+  for (const d of Object.values(el)) { d.style.top = (d.dataset.top * unit) + 'px'; d.style.height = (d.dataset.h * unit - GAP * unit) + 'px'; }
+}
+const MODKEY = {ControlLeft:"Ctrl",ControlRight:"Ctrl",ShiftLeft:"Shift",ShiftRight:"Shift",AltLeft:"Alt",AltRight:"Alt",MetaLeft:"Win",Fn:"Fn"};
+const up = s => s.toUpperCase();
+function printed(o) {   // red legend as printed (plus stickers) and blue Cyrillic
+  const m = KMAP[o.sc]; let main = up(m.de), shift = m.deS;
+  if (/^[a-zäöüß]$/i.test(m.de)) shift = ''; if (m.de === 'ß') { main = 'ß'; shift = '?'; }
+  if (STICKER[o.sc]) main = STICKER[o.sc];
+  if (o.sc === '29') { main = '^'; shift = '°'; } if (o.sc === '0D') { main = '´'; shift = '`'; }
+  const cyr = x => /[а-яёіїєґ]/i.test(x);
+  const c = cyr(m.ua) ? up(m.ua) : (cyr(m.ru) ? up(m.ru) : ''), c2 = cyr(m.ru) && m.ru !== m.ua && cyr(m.ua) ? up(m.ru) : '';
+  return {main, shift, g: ALT_GR[o.sc] || '', c, c2};
+}
+function render() {
+  kb.classList.toggle('view-out', view !== 'cap');
+  const active = [...mods].sort().join('+');
+  const hits = {};
+  if (mods.size && !mods.has('Fn')) for (const c of COMBOS) if (c.m === active) hits[c.k] = (hits[c.k] ? hits[c.k] + '; ' : '') + c.d;
+  for (const [code, d] of Object.entries(el)) {
+    const o = defs[code]; let h = '';
+    if (o.sc) {
+      const m = KMAP[o.sc];
+      if (view === 'cap') { const p = printed(o); h = `<span class="s">${esc(p.shift)}</span><span class="m">${esc(p.main)}</span><span class="g">${esc(p.g)}</span><span class="c">${esc(p.c)}</span><span class="c2">${esc(p.c2)}</span>`; }
+      else { const b = m[view], s = m[view + 'S'], p = printed(o); d.classList.toggle('diff', view === 'en' && (up(b) !== p.main || (p.shift && s !== p.shift)));
+             h = `<span class="s">${esc(s && s !== up(b) ? s : '')}</span><span class="m">${esc(b)}</span>`; }
+    } else { d.classList.remove('diff'); h = `<span class="m">${esc(o.t)}</span>` + (o.g ? `<span class="g">${esc(o.g)}</span>` : '') + (o.ic ? `<span class="ic">${o.ic}</span>` : ''); }
+    let lab = '';
+    if (mods.has('Fn') && o.fn) lab = o.fn; else if (hits[code]) lab = hits[code];
+    if (lab && !d.classList.contains('short')) h += `<span class="t">${esc(short(lab))}</span>`;
+    d.innerHTML = h;
+    d.classList.toggle('hl', !!lab);
+    d.classList.toggle('mod', mods.has(MODKEY[code]));
+    d.classList.toggle('dim', mods.size > 0 && !lab && !mods.has(MODKEY[code]));
+  }
+  for (const b of document.querySelectorAll('#mods button')) b.classList.toggle('on', mods.has(b.dataset.m));
+  for (const b of document.querySelectorAll('#views button')) b.classList.toggle('on', b.dataset.v === view);
+  if (mods.size) showMods(active, hits);
+}
+function short(s) { s = s.split(';')[0].replace(/\s*\(.*\)/, ''); return s.length > 22 ? s.slice(0, 21) + '…' : s; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function showMods(active, hits) {
+  let rows = '';
+  if (mods.has('Fn')) for (const [code, o] of Object.entries(defs)) { if (o.fn) rows += `<tr><td><kbd>Fn</kbd><span class="plus">+</span><kbd>${esc(o.t)}</kbd></td><td>${esc(o.fn)}</td></tr>`; }
+  else for (const c of COMBOS) if (c.m === active) rows += `<tr><td>${keysHtml(c.m, c.k)}</td><td>${esc(c.d)}</td></tr>`;
+  info.innerHTML = `<h3>${esc(active.replace('Ctrl', 'Strg (Ctrl)'))} + …</h3>` + (rows ? `<table>${rows}</table>` : '<div class="note">С этим сочетанием ничего особого не назначено.</div>');
+}
+function keysHtml(m, k) { const parts = m ? m.split('+').map(x => x === 'Ctrl' ? 'Strg' : x) : []; parts.push(keyLabel(k)); return parts.map(p => `<kbd>${esc(p)}</kbd>`).join('<span class="plus">+</span>'); }
+function keyLabel(code) { const o = defs[code]; if (!o) return code; if (o.sc) return printed(o).main; return o.t || 'Пробел'; }
+function showKey(code) {
+  if (mods.size) return;
+  const o = defs[code]; let rows = '', title = NAMES[code] || 'Клавиша ' + keyLabel(code);
+  if (o.sc) {
+    const m = KMAP[o.sc], p = printed(o);
+    rows += `<tr><td>нарисовано</td><td class="ch">${esc([p.main, p.shift, p.g].filter(Boolean).join('  '))}${p.c ? '  <span style="color:var(--blue)">' + esc([p.c, p.c2].filter(Boolean).join(' ')) + '</span>' : ''}</td></tr>`;
+    for (const [v, n] of [['en', 'English'], ['ru', 'Русская'], ['ua', 'Українська']]) rows += `<tr><td>${n}</td><td class="ch">${esc(m[v])}  ${esc(m[v + 'S'])}</td></tr>`;
+    if (STICKER[o.sc]) rows += `<tr><td>наклейка</td><td>под ней немецкая ${STICKER[o.sc] === 'Y' ? 'Z' : 'Y'}; печатается то, что на наклейке</td></tr>`;
+    if (p.g) rows += `<tr><td>${esc(p.g)}</td><td>немецкий знак через Alt Gr — в этих раскладках не печатается</td></tr>`;
+  }
+  if (o.fn) rows += `<tr><td>Fn + ${esc(o.t)}</td><td>${esc(o.fn)}</td></tr>`;
+  for (const c of COMBOS) if (c.k === code) rows += `<tr><td>${keysHtml(c.m, c.k)}</td><td>${esc(c.d)}</td></tr>`;
+  if (MODKEY[code]) rows += `<tr><td></td><td>клик — «зажать» и увидеть, что с ней делают другие клавиши</td></tr>`;
+  info.innerHTML = `<h3>${esc(title)}</h3>` + (rows ? `<table>${rows}</table>` : '');
+}
+function toggleMod(m) { if (mods.has(m)) mods.delete(m); else mods.add(m); render(); if (!mods.size) info.innerHTML = '<h3>Наведите на клавишу или зажмите Ctrl / Alt / Win / Fn</h3>'; }
+document.getElementById('mods').addEventListener('click', e => { const b = e.target.closest('button'); if (b) toggleMod(b.dataset.m); });
+document.getElementById('views').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { view = b.dataset.v; render(); } });
+// real keyboard: light the physical key; held modifiers switch the combo view
+const REAL = {ControlLeft:"Ctrl",ControlRight:"Ctrl",ShiftLeft:"Shift",ShiftRight:"Shift",AltLeft:"Alt",AltRight:"Alt",MetaLeft:"Win",MetaRight:"Win"};
+let realMods = new Set();
+addEventListener('keydown', e => {
+  const d = el[e.code]; if (d) d.classList.add('down');
+  if (REAL[e.code] && !realMods.has(REAL[e.code])) { realMods.add(REAL[e.code]); mods = new Set(realMods); render(); }
+  else if (d && !REAL[e.code]) showOrCombo(e.code);
+  if (e.key === 'Alt' || e.code === 'F10') e.preventDefault();
+});
+addEventListener('keyup', e => {
+  const d = el[e.code]; if (d) d.classList.remove('down');
+  if (REAL[e.code]) { realMods.delete(REAL[e.code]); mods = new Set(realMods); render(); if (!mods.size) info.innerHTML = '<h3>Наведите на клавишу или зажмите Ctrl / Alt / Win / Fn</h3>'; }
+  if (e.key === 'Alt') e.preventDefault();
+});
+addEventListener('blur', () => { realMods.clear(); for (const d of Object.values(el)) d.classList.remove('down'); });
+function showOrCombo(code) { if (!mods.size) showKey(code); }
+// list rows light their keys
+for (const tr of document.querySelectorAll('tr[data-k]')) {
+  const ks = tr.dataset.k.split(' ');
+  tr.addEventListener('mouseenter', () => ks.forEach(k => el[k] && el[k].classList.add('hl')));
+  tr.addEventListener('mouseleave', () => ks.forEach(k => el[k] && el[k].classList.remove('hl')));
+}
+document.getElementById('legend').innerHTML = '<span><i style="background:var(--red)"></i>красное — немецкая надпись на клавише</span><span><i style="background:var(--blue)"></i>синее — кириллица</span><span><i style="background:var(--warn)"></i>в English печатается не то, что нарисовано</span><span><i style="background:var(--light)"></i>есть действие</span>';
+// #en / #ru,Win / #cap,Fn: open with a view and held modifiers (handy for links)
+for (const part of decodeURIComponent(location.hash.slice(1)).split(',')) { if (['cap','en','ru','ua'].includes(part)) view = part; else if (['Ctrl','Shift','Alt','Win','Fn'].includes(part)) mods.add(part); }
+addEventListener('resize', layout); layout(); render();
+</script>
 </body>
 </html>
