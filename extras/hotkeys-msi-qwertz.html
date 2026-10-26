@@ -146,7 +146,7 @@ kbd{display:inline-block;min-width:24px;padding:1px 7px;border:1px solid #3a4852
 <table class="list">
 <tr data-k="ShiftLeft"><td><kbd>Shift</kbd> ×5</td><td>залипание клавиш не всплывает</td></tr>
 <tr data-k="ShiftRight"><td>долго держать <kbd>Shift</kbd></td><td>фильтр клавиш не всплывает</td></tr>
-<tr data-k="PrintScreen"><td><kbd>Druck</kbd> один</td><td>«Ножницы» не установлены: Druck просто кладёт снимок экрана в буфер</td></tr>
+<tr data-k="PrintScreen"><td><kbd>Druck</kbd></td><td>снимок всего экрана в буфер (проверено); «Ножницы» не установлены, поэтому Fn+Druck и Win+Shift+S ничего не делают</td></tr>
 </table>
 </section>
 
@@ -163,7 +163,7 @@ const ALT_GR = {"03":"²","04":"³","08":"{","09":"[","0A":"]","0B":"}","0C":"\\
 const STICKER = {"15":"Y","2C":"Z"};   // Y/Z stickers over the German Z/Y
 const FW = 16/15;
 const ROWS = [
-  {h:1, keys:[["Escape",FW,{t:"Esc"}],["F1",FW,{t:"F1",fx:"—",fn:"ничего: клавиатура шлёт служебный код MSI, Windows его не использует (проверено)"}],
+  {h:1, keys:[["Escape",FW,{t:"Esc"}],["F1",FW,{t:"F1",fn:"то же, что F1 без Fn"}],
     ["F2",FW,{t:"F2",fx:"экраны",fn:"меню экранов «Проецировать» — то же, что Win+P (проверено)"}],
     ["F3",FW,{t:"F3",fx:"тачпад",fn:"тачпад выкл / вкл — шлёт Ctrl+Win+F24, переключатель тачпада Windows (проверено)"}],
     ["F4",FW,{t:"F4",fn:"то же, что F4 без Fn"}],["F5",FW,{t:"F5",fn:"то же, что F5 без Fn"}],
@@ -173,10 +173,10 @@ const ROWS = [
     ["F10",FW,{t:"F10",fx:"самолёт",fn:"режим «в самолёте»: выключает Wi-Fi; повторно — включает (проверено)"}],
     ["F11",FW,{t:"F11",fn:"то же, что F11 без Fn"}],
     ["F12",FW,{t:"F12",fx:"сон",fn:"сон (проверено)"}],
-    ["PrintScreen",FW,{t:"Druck",fx:"снимок"}],["Delete",FW,{t:"Entf",g:"Einfg",fx:"Fn: Einfg",fn:"Einfg = Insert (проверено)"}]]},
+    ["PrintScreen",FW,{t:"Druck",fx:"в буфер",fn:"шлёт Win+Shift+S (вырезать область экрана), но «Ножницы» не установлены — ничего не происходит (проверено)"}],["Delete",FW,{t:"Entf",g:"Einfg",fx:"Fn: Einfg",fn:"Einfg = Insert (проверено)"}]]},
   {h:1, keys:[["Backquote",1,{sc:"29"}],["Digit1",1,{sc:"02"}],["Digit2",1,{sc:"03"}],["Digit3",1,{sc:"04"}],["Digit4",1,{sc:"05"}],["Digit5",1,{sc:"06"}],
     ["Digit6",1,{sc:"07"}],["Digit7",1,{sc:"08"}],["Digit8",1,{sc:"09"}],["Digit9",1,{sc:"0A"}],["Digit0",1,{sc:"0B"}],["Minus",1,{sc:"0C"}],["Equal",1,{sc:"0D"}],
-    ["Backspace",2,{t:"⟵"}],["Home",1,{t:"Pos1"}]]},
+    ["Backspace",2,{t:"⟵"}],["Home",1,{t:"Pos1",fn:"то же, что Pos1 без Fn"}]]},
   {h:1, keys:[["Tab",1.5,{t:"⇆"}],["KeyQ",1,{sc:"10"}],["KeyW",1,{sc:"11"}],["KeyE",1,{sc:"12"}],["KeyR",1,{sc:"13"}],["KeyT",1,{sc:"14"}],["KeyY",1,{sc:"15"}],
     ["KeyU",1,{sc:"16"}],["KeyI",1,{sc:"17"}],["KeyO",1,{sc:"18"}],["KeyP",1,{sc:"19"}],["BracketLeft",1,{sc:"1A"}],["BracketRight",1,{sc:"1B"}],["Backslash",1.5,{sc:"2B"}],
     ["PageUp",1,{t:"Bild↑",fx:"подсв. +",fn:"подсветка клавиатуры ярче — по значку; клавиатура шлёт служебный код MSI"}]]},
@@ -216,7 +216,7 @@ const COMBOS = [
   {m:"Alt",k:"Tab",d:"переключить окно"},
   {m:"Alt",k:"F4",d:"закрыть окно"},
   {m:"Alt",k:"PrintScreen",d:"снимок активного окна в буфер"},
-  {m:"",k:"PrintScreen",d:"снимок всего экрана в буфер"},
+  {m:"",k:"PrintScreen",d:"снимок всего экрана в буфер (проверено)"},
   {m:"Ctrl",k:"KeyC",d:"копировать"},{m:"Ctrl",k:"KeyV",d:"вставить"},{m:"Ctrl",k:"KeyX",d:"вырезать"},
   {m:"Ctrl",k:"KeyZ",d:"отменить"},{m:"Ctrl",k:"KeyY",d:"повторить"},{m:"Ctrl",k:"KeyA",d:"выделить всё"},
   {m:"Ctrl",k:"KeyS",d:"сохранить"},{m:"Ctrl",k:"KeyF",d:"найти"},{m:"Ctrl",k:"KeyT",d:"новая вкладка"},{m:"Ctrl",k:"KeyW",d:"закрыть вкладку"},
@@ -336,7 +336,7 @@ document.getElementById('legend').innerHTML = '<span><i style="background:var(--
 for (const part of decodeURIComponent(location.hash.slice(1)).split(',')) { if (['cap','en','ru','ua'].includes(part)) view = part; else if (['Ctrl','Shift','Alt','Win','Fn'].includes(part)) mods.add(part); }
 document.getElementById('fnlist').innerHTML = Object.entries(defs).filter(([c, o]) => o.fn && !/^то же/.test(o.fn))
   .map(([c, o]) => `<tr data-k="Fn ${c}"><td><kbd>Fn</kbd><span class="plus">+</span><kbd>${esc(o.t)}</kbd></td><td>${esc(o.fn)}</td></tr>`).join('')
-  + '<tr data-k="Fn F4 F5 F8 F9 F11"><td><kbd>Fn</kbd><span class="plus">+</span><kbd>F4 F5 F8 F9 F11</kbd></td><td>то же, что без Fn (проверено)</td></tr>';
+  + '<tr data-k="Fn F1 F4 F5 F8 F9 F11 Home"><td><kbd>Fn</kbd><span class="plus">+</span><kbd>F1 F4 F5 F8 F9 F11 Pos1</kbd></td><td>то же, что без Fn (проверено)</td></tr>';
 for (const tr of document.querySelectorAll('#fnlist tr[data-k]')) { const ks = tr.dataset.k.split(' ');
   tr.addEventListener('mouseenter', () => ks.forEach(k => el[k] && el[k].classList.add('hl'))); tr.addEventListener('mouseleave', () => ks.forEach(k => el[k] && el[k].classList.remove('hl'))); }
 addEventListener('resize', layout); layout(); render();
