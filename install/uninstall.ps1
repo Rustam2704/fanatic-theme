@@ -35,6 +35,7 @@ $lk = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP'
 if ((Get-ItemProperty $lk -ErrorAction SilentlyContinue).LockScreenImagePath -like '*\fanatic\*') {
   foreach ($v in 'LockScreenImagePath', 'LockScreenImageUrl', 'LockScreenImageStatus') { Remove-ItemProperty $lk -Name $v -ErrorAction SilentlyContinue }
   Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name DisableAcrylicBackgroundOnLogon -ErrorAction SilentlyContinue
+  Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' -Name LockScreenImage -ErrorAction SilentlyContinue
   Note 'lock screen picture policy removed'
 }
 Remove-Item (Join-Path $env:LOCALAPPDATA 'fanatic') -Recurse -ErrorAction SilentlyContinue; Note 'shared language/location removed'
