@@ -101,6 +101,8 @@ Step '4. Autostart tasks'
 $me  = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) `
        -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -Priority 5
+# one-shot / on-demand tasks: the defaults refuse to start on battery and the task sits "Queued" forever (Viksa, 26.10)
+$once = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 function UserTask($name, $exe, $delay, $level, $desc) {
   $t = New-ScheduledTaskTrigger -AtLogOn -User $me; $t.Delay = "PT${delay}S"
   $p = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel $level
@@ -115,7 +117,7 @@ Disable-ScheduledTask -TaskName 'screen-off' | Out-Null; Note 'screen-off create
 # the clock flyout's "sync now" button runs this on demand: w32tm as SYSTEM, startable by any user
 $sd = 'D:AI(A;;FR;;;SY)(A;;0x1200a9;;;AU)(A;;0x1f019f;;;BA)(A;;0x1f019f;;;SY)(A;;FA;;;BA)'
 Register-ScheduledTask -TaskName 'fanatic-time-sync' -Action (New-ScheduledTaskAction -Execute "$env:WINDIR\System32\w32tm.exe" -Argument '/resync /force') `
-  -Principal (New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest) -Description 'w32tm /resync on demand (fanatic-bar clock menu)' -Force | Out-Null
+  -Principal (New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest) -Settings $once -Description 'w32tm /resync on demand (fanatic-bar clock menu)' -Force | Out-Null
 $svc = New-Object -ComObject Schedule.Service; $svc.Connect()
 $svc.GetFolder('\').GetTask('fanatic-time-sync').SetSecurityDescriptor($sd, 0); Note 'fanatic-time-sync (SYSTEM, on demand)'
 # optional: Ctrl+Alt+F (keyboard-switch) opens Everything search - only when Everything is installed
@@ -141,6 +143,14 @@ Step '5. Restart Explorer (clean) and start the programs'
 foreach ($t in 'keyboard-switch', 'fan-tray') { Start-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
 
 # ---------------------------------------------------------------- 6. tray: our icons stay, everything else folds into ^
+# Run an action once in the user's session, un-elevated, and wait for it (Explorer's tray object and WinRT
+# per-user settings refuse an elevated caller)
+function RunAsUserOnce($name, $action) {
+  Register-ScheduledTask -TaskName $name -Action $action -Principal (New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited) -Settings $once -Force | Out-Null
+  Start-ScheduledTask -TaskName $name; Start-Sleep 1
+  for ($i = 0; $i -lt 60 -and (Get-ScheduledTask -TaskName $name).State -in 'Running', 'Queued'; $i++) { Start-Sleep 1 }
+  Unregister-ScheduledTask -TaskName $name -Confirm:$false
+}
 Step '6. Tray: keep our icons on the taskbar, fold the rest into ^'
 Start-Sleep 10   # Windows accepts the preference only for an icon it has already seen
 $tp = Join-Path $Root 'tray-prefs\tray-prefs.exe'
@@ -149,12 +159,14 @@ $ours = @('fanatic-bar.exe', 'keyboard-switch.exe') + $(if ($MsiFan) { 'fan-tray
 # un-elevated in the user's session through a one-shot task
 $cmd = "& '$tp' set 2 $($ours -join ' '); & '$tp' autotray on"
 $ta = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -Command $cmd"
-Register-ScheduledTask -TaskName 'fanatic-tray-once' -Action $ta -Principal (New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited) -Force | Out-Null
-Start-ScheduledTask -TaskName 'fanatic-tray-once'
-for ($i = 0; $i -lt 30 -and (Get-ScheduledTask -TaskName 'fanatic-tray-once').State -eq 'Running'; $i++) { Start-Sleep 1 }
-Unregister-ScheduledTask -TaskName 'fanatic-tray-once' -Confirm:$false
+RunAsUserOnce 'fanatic-tray-once' $ta
 Note "tray: $($ours -join ', ') kept on the taskbar, the rest folds into ^"
 Note 'if a bar icon ever lands in ^ later: run   tray-prefs set 2 fanatic-bar.exe   while it is visible, or drag it out'
+if (-not $NoLockScreen) {
+  # the sign-in screen (after a click on the account picture) shows the USER's lock picture, not the machine one: set it too
+  RunAsUserOnce 'fanatic-lock-once' (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Pack\src\scripts\user-lockscreen.ps1`"")
+  Note 'sign-in screen: the same sky as the lock screen'
+}
 
 Step 'Done'
 Write-Host @"

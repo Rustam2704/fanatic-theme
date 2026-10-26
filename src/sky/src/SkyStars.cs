@@ -34,8 +34,8 @@ static partial class SkyStars
     static bool labelBg = true;
     static double lineLevel = 0.16, fieldDim = 0.75, glowDim = 1.0;
     // Milky Way (A10): optional backdrop under the stars that turns with the sky (owner 26.10). Re-projected only on the
-    // 18 s sky tick, at half the screen resolution, into the canvas base (BuildCanvas); never touched per frame, so it costs
-    // ~0 while the stars twinkle. Image = milkyway.jpg next to the exe (ESO/S. Brunier), kept downscaled in memory.
+    // 18 s sky tick, at full screen resolution with bilinear sampling, into the canvas base (BuildCanvas); never touched per
+    // frame, so it costs ~0 while the stars twinkle. Image = milkyway.jpg next to the exe (ESO/S. Brunier), kept downscaled.
     static bool showMilkyway = false; static double milkywayDim = 0.35; static Bitmap milkyBmp;
     static string SettingsFile { get { return Path.Combine(Dir, "sky-stars.json"); } }
     static void LoadSettings()
@@ -387,13 +387,7 @@ static partial class SkyStars
             using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.Black);
-                if (showMilkyway && RenderMilkyway())   // backdrop under lines+stars, upscaled from half resolution
-                {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bilinear;
-                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                    g.DrawImage(milkyBmp, new Rectangle(0, 0, W, H));
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Default; g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Default;
-                }
+                if (showMilkyway && RenderMilkyway()) g.DrawImageUnscaled(milkyBmp, 0, 0);   // backdrop under lines+stars
                 if (showLines) using (var pen = new Pen(Scale(TINTS[0], lineLevel), 1)) foreach (var s in segments) g.DrawLine(pen, s[0], s[1], s[2], s[3]);
                 foreach (var l in labels)
                     TextRenderer.DrawText(g, l.Text, LabelFont, l.Rect.Location, Scale(TINTS[0], LABEL_LEVEL), labelBg ? Color.Black : Color.Transparent, TextFormatFlags.NoPadding);
@@ -521,16 +515,16 @@ static partial class SkyStars
     }
 
     // The panorama (equirectangular, galactic coordinates, centre l=0 b=0, l growing to the LEFT) is decoded once and kept
-    // at MW_W x MW_H as BGR bytes (6 MB instead of 72 MB for the full 6000x3000 decode).
-    const int MW_W = 2048, MW_H = 1024;
-    static byte[] milkySrc; static byte[] milkyDst;
+    // at MW_W x MW_H as BGR bytes: 11.4 px per degree, about the screen's own density at mid altitudes (24 MB instead of the
+    // 72 MB full 6000x3000 decode, which is freed at once). Owner 26.10: the half-resolution 2048 px layer looked blocky.
+    const int MW_W = 4096, MW_H = 2048;
+    static byte[] milkySrc; static byte[] milkyRow;
     static void BuildMilkyway()
     {
         try
         {
             if (milkyBmp != null) { milkyBmp.Dispose(); milkyBmp = null; }
-            milkyDst = null;
-            if (!showMilkyway || W <= 0 || H <= 0) { milkySrc = null; return; }
+            if (!showMilkyway || W <= 0 || H <= 0) { milkySrc = null; milkyRow = null; return; }
             if (milkySrc != null) return;
             string p = Path.Combine(Dir, "milkyway.jpg");
             if (!File.Exists(p)) { Log("milkyway.jpg missing"); return; }
@@ -539,6 +533,7 @@ static partial class SkyStars
                 using (var g = Graphics.FromImage(small)) using (var src = new Bitmap(p))
                 {
                     g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
                     g.DrawImage(src, new Rectangle(0, 0, MW_W, MW_H));
                 }
                 var d = small.LockBits(new Rectangle(0, 0, MW_W, MW_H), System.Drawing.Imaging.ImageLockMode.ReadOnly, small.PixelFormat);
@@ -550,49 +545,63 @@ static partial class SkyStars
         }
         catch (Exception ex) { Log("milkyway: " + ex.Message); milkySrc = null; }
     }
-    // Project the panorama onto the screen for NOW, exactly inverse to ProjectVec (stereographic zenith projection), at half
-    // resolution: screen pixel -> horizon vector -> equatorial (rotated by the local sidereal time) -> galactic -> panorama.
-    // ~0.5 M pixels, tens of ms, once per 18 s sky tick. Returns false when there is nothing to draw.
+    // Project the panorama onto the screen for NOW, exactly inverse to ProjectVec (stereographic zenith projection):
+    // screen pixel -> horizon vector -> equatorial (rotated by the local sidereal time) -> galactic -> panorama, sampled
+    // bilinearly. Once per 18 s sky tick, row by row straight into the bitmap. Returns false when there is nothing to draw.
+    static DateTime milkyStatsAt;
     static bool RenderMilkyway()
     {
         if (milkySrc == null) return false;
         try
         {
-            int w = (W + 1) / 2, h = (H + 1) / 2;
-            if (milkyBmp == null || milkyBmp.Width != w || milkyBmp.Height != h)
+            var sw = Stopwatch.StartNew();
+            if (milkyBmp == null || milkyBmp.Width != W || milkyBmp.Height != H)
             {
                 if (milkyBmp != null) milkyBmp.Dispose();
-                milkyBmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                milkyBmp = new Bitmap(W, H, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
             }
-            int stride = (w * 3 + 3) & ~3;
-            if (milkyDst == null || milkyDst.Length != stride * h) milkyDst = new byte[stride * h];
+            if (milkyRow == null || milkyRow.Length != W * 3) milkyRow = new byte[W * 3];
             double c, s; LstTrig(DateTime.UtcNow, out c, out s);
             double sl = Math.Sin(Rad(LAT)), cl = Math.Cos(Rad(LAT)), R = 0.39 * W, fade = 0.15;
             int dim = (int)Math.Round(Math.Max(0, Math.Min(1, milkywayDim)) * 256);
-            var src = milkySrc; var dst = milkyDst;
-            for (int y = 0; y < h; y++)
+            const double U = MW_W / (2 * Math.PI), V = MW_H / Math.PI;
+            var src = milkySrc; var row = milkyRow; const int SR = MW_W * 3;
+            var d = milkyBmp.LockBits(new Rectangle(0, 0, W, H), System.Drawing.Imaging.ImageLockMode.WriteOnly, milkyBmp.PixelFormat);
+            try
             {
-                double dy = (H / 2.0 - (y * 2 + 0.5)) / R; int row = y * stride;
-                for (int x = 0; x < w; x++)
+                for (int y = 0; y < H; y++)
                 {
-                    double dx = (W / 2.0 - (x * 2 + 0.5)) / R, q = dx * dx + dy * dy, k = 1 / (1 + q);
-                    double Z = (1 - q) * k; int o = row + x * 3;
-                    if (Z < MIN_Z) { dst[o] = dst[o + 1] = dst[o + 2] = 0; continue; }
-                    double E = 2 * dx * k, N = 2 * dy * k;
-                    double a = cl * Z - sl * N, vz = sl * Z + cl * N, vx = c * a - s * E, vy = s * a + c * E;
-                    double gx = -0.0548755604 * vx - 0.8734370902 * vy - 0.4838350155 * vz;
-                    double gy = 0.4941094279 * vx - 0.4448296300 * vy + 0.7469822445 * vz;
-                    double gz = -0.8676661490 * vx - 0.1980763734 * vy + 0.4559837762 * vz;
-                    double u = 0.5 - Math.Atan2(gy, gx) / (2 * Math.PI); u -= Math.Floor(u);
-                    double v = 0.5 - Math.Asin(Math.Max(-1, Math.Min(1, gz))) / Math.PI;
-                    int sx = Math.Min(MW_W - 1, (int)(u * MW_W)), sy = Math.Min(MW_H - 1, (int)(v * MW_H)), si = (sy * MW_W + sx) * 3;
-                    int m = Z < MIN_Z + fade ? (int)(dim * (Z - MIN_Z) / fade) : dim;   // fade out towards the horizon cut
-                    dst[o] = (byte)(src[si] * m >> 8); dst[o + 1] = (byte)(src[si + 1] * m >> 8); dst[o + 2] = (byte)(src[si + 2] * m >> 8);
+                    double dy = (H / 2.0 - (y + 0.5)) / R;
+                    for (int x = 0; x < W; x++)
+                    {
+                        double dx = (W / 2.0 - (x + 0.5)) / R, q = dx * dx + dy * dy, k = 1 / (1 + q);
+                        double Z = (1 - q) * k; int o = x * 3;
+                        if (Z < MIN_Z) { row[o] = row[o + 1] = row[o + 2] = 0; continue; }
+                        double E = 2 * dx * k, N = 2 * dy * k;
+                        double a = cl * Z - sl * N, vz = sl * Z + cl * N, vx = c * a - s * E, vy = s * a + c * E;
+                        double gx = -0.0548755604 * vx - 0.8734370902 * vy - 0.4838350155 * vz;
+                        double gy = 0.4941094279 * vx - 0.4448296300 * vy + 0.7469822445 * vz;
+                        double gz = -0.8676661490 * vx - 0.1980763734 * vy + 0.4559837762 * vz;
+                        // texel centres at +0.5: fu/fv are positions in texel space; wrap in longitude, clamp at the poles
+                        double fu = (Math.PI - Math.Atan2(gy, gx)) * U - 0.5, fv = (Math.PI / 2 - Math.Asin(Math.Max(-1, Math.Min(1, gz)))) * V - 0.5;
+                        int x0 = (int)Math.Floor(fu), y0 = (int)Math.Floor(fv);
+                        int wx = (int)((fu - x0) * 256), wy = (int)((fv - y0) * 256);
+                        int xa = x0 < 0 ? x0 + MW_W : (x0 >= MW_W ? x0 - MW_W : x0), xb = xa + 1 == MW_W ? 0 : xa + 1;
+                        int ya = y0 < 0 ? 0 : (y0 >= MW_H ? MW_H - 1 : y0), yb = y0 + 1 >= MW_H ? MW_H - 1 : (y0 + 1 < 0 ? 0 : y0 + 1);
+                        int p00 = ya * SR + xa * 3, p01 = ya * SR + xb * 3, p10 = yb * SR + xa * 3, p11 = yb * SR + xb * 3;
+                        int m = Z < MIN_Z + fade ? (int)(dim * (Z - MIN_Z) / fade) : dim;   // fade out towards the horizon cut
+                        for (int ch = 0; ch < 3; ch++)
+                        {
+                            int top = src[p00 + ch] * (256 - wx) + src[p01 + ch] * wx, bot = src[p10 + ch] * (256 - wx) + src[p11 + ch] * wx;
+                            int v = ((top >> 8) * (256 - wy) + (bot >> 8) * wy) >> 8;
+                            row[o + ch] = (byte)(v * m >> 8);
+                        }
+                    }
+                    Marshal.Copy(row, 0, d.Scan0 + y * d.Stride, W * 3);
                 }
             }
-            var d = milkyBmp.LockBits(new Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.WriteOnly, milkyBmp.PixelFormat);
-            for (int y = 0; y < h; y++) Marshal.Copy(dst, y * stride, d.Scan0 + y * d.Stride, w * 3);
-            milkyBmp.UnlockBits(d);
+            finally { milkyBmp.UnlockBits(d); }
+            if ((DateTime.UtcNow - milkyStatsAt).TotalSeconds >= CULL_PERIOD_S) { milkyStatsAt = DateTime.UtcNow; Log("milky way rendered in " + sw.ElapsedMilliseconds + " ms"); }
             return true;
         }
         catch (Exception ex) { Log("milkyway render: " + ex.Message); return false; }
