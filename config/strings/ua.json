@@ -160,7 +160,7 @@
   "menu.net.connections": "Мережеві підключення",
   "menu.sys.task_manager": "Диспетчер завдань",
   "menu.sys.resource_monitor": "Монітор ресурсів",
-  "menu.weather.forecast": "Прогноз на 10 днів",
+  "menu.weather.forecast": "Прогноз на 24 години",
   "menu.weather.refresh": "Оновити погоду",
   "menu.power.popup": "Живлення й яскравість",
   "menu.power.settings": "Параметри живлення й сну",

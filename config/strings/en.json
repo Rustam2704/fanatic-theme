@@ -160,7 +160,7 @@
   "menu.net.connections": "Network connections",
   "menu.sys.task_manager": "Task Manager",
   "menu.sys.resource_monitor": "Resource Monitor",
-  "menu.weather.forecast": "10-day forecast",
+  "menu.weather.forecast": "24-hour forecast",
   "menu.weather.refresh": "Refresh weather",
   "menu.power.popup": "Power & brightness",
   "menu.power.settings": "Power & sleep settings",

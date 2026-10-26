@@ -160,7 +160,7 @@
   "menu.net.connections": "Сетевые подключения",
   "menu.sys.task_manager": "Диспетчер задач",
   "menu.sys.resource_monitor": "Монитор ресурсов",
-  "menu.weather.forecast": "Прогноз на 10 дней",
+  "menu.weather.forecast": "Прогноз на 24 часа",
   "menu.weather.refresh": "Обновить погоду",
   "menu.power.popup": "Питание и яркость",
   "menu.power.settings": "Параметры питания и сна",
