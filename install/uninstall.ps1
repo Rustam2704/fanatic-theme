@@ -28,6 +28,7 @@ foreach ($v in 'HideClock', 'HideSCAVolume', 'HideSCAPower', 'HideSCAMeetNow') {
 $tp = Join-Path $Root 'tray-prefs\tray-prefs.exe'; if (Test-Path $tp) { & $tp autotray off; Note 'tray: all icons shown again' }
 Remove-Item 'HKCU:\Software\Classes\DesktopBackground\Shell\SkyStars' -Recurse -ErrorAction SilentlyContinue; Note 'desktop menu entry removed'
 Remove-ItemProperty 'HKCU:\Software\Microsoft\CTF\LangBar' -Name ShowStatus -ErrorAction SilentlyContinue
+Set-WinLanguageBarOption   # Windows' own input indicator back
 # Windows' own layout hotkeys back to their defaults (Alt+Shift language, Ctrl+Shift layout)
 $tg = 'HKCU:\Keyboard Layout\Toggle'; Set-ItemProperty $tg -Name 'Hotkey' -Value '1'; Set-ItemProperty $tg -Name 'Language Hotkey' -Value '1'; Set-ItemProperty $tg -Name 'Layout Hotkey' -Value '2'
 Note 'Windows layout hotkeys restored (keyboard layouts themselves are left installed)'

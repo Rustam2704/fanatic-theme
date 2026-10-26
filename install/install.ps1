@@ -63,6 +63,9 @@ foreach ($r in 'theme-dark-transparency', 'dwm-accent', 'accent-palette', 'explo
                'taskbar-hide-system-icons', 'langbar-hidden', 'desktop-black') {
   RegImport "$Pack\registry\$r.reg"; Note "$r.reg"
 }
+# Windows' own input indicator (UKR / ENG by the clock) duplicates the bar's UA / RU / EN: switch to the legacy
+# language bar, which langbar-hidden.reg keeps hidden - the indicator disappears at once (Viksa 26.10)
+Set-WinLanguageBarOption -UseLegacyLanguageBar; Note 'Windows input indicator hidden (the bar shows the layout)'
 # black desktop NOW (the .reg alone needs a re-login; without black the old wallpaper shows through the sky)
 Add-Type 'using System; using System.Runtime.InteropServices; public class FanDesk {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool SystemParametersInfo(uint a, uint p, string v, uint f);
