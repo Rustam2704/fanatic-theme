@@ -339,7 +339,7 @@ static partial class FanaticBar
         using (var days = new CalendarView(null)) using (var months = new CalendarView(null))
         {
             months.ShowMonths();
-            int pad = Px(12), w = Math.Max(face.Width, date.Width) + days.Width + months.Width + pad * 5 + Px(560), h = Math.Max(Math.Max(face.Height + date.Height + pad, days.Height), Px(36) * 7) + pad * 2;
+            int pad = Px(12), w = Math.Max(face.Width, date.Width) + days.Width + months.Width + pad * 5 + Px(620), h = Math.Max(Math.Max(face.Height + date.Height + pad, days.Height), Px(1000)) + pad * 2;
             using (var bmp = new Bitmap(w, h)) using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Background); int x = pad;
@@ -349,7 +349,8 @@ static partial class FanaticBar
                 put(days, x, pad); x += days.Width + pad; put(months, x, pad); x += months.Width + pad;
                 int[] codes = { 0, 2, 3, 61, 45, 71, 95, 51, 80, 3, 0, 1 }; var demo = new List<HourForecast>(); var h0 = DateTime.Today.AddHours(DateTime.Now.Hour);
                 for (int i = 0; i < 24; i++) demo.Add(new HourForecast { Time = h0.AddHours(i), Code = codes[i % codes.Length], Temp = 9 - i * 0.6, Day = h0.AddHours(i).Hour >= 7 && h0.AddHours(i).Hour < 18 });
-                using (var r = new HourList(demo)) put(r, x, pad);
+                forecast = demo; forecastAt = DateTime.Now; geoPlace = Strings.T("weather.city");
+                using (var popup = new WeatherPopup()) { popup.Preview(); put(popup, x, pad); }
                 bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
             }
         }
@@ -947,28 +948,6 @@ static partial class FanaticBar
     }
     static List<HourForecast> forecast; static DateTime forecastAt = DateTime.MinValue; static string forecastError;
 
-    static List<HourForecast> FetchForecast()
-    {
-        EnsureLocation();   // first run / offline start: resolve the place before asking for its weather
-        if (!HasLocation) throw new Exception(Strings.T("geo.unknown"));
-        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-        using (var wc = new WebClient { Encoding = System.Text.Encoding.UTF8 })
-        {
-            // the next 24 hours from the current one, in the place's own time zone
-            string js = wc.DownloadString("https://api.open-meteo.com/v1/forecast?" + GeoQuery + "&hourly=weather_code,temperature_2m,is_day&forecast_hours=24&timezone=auto");
-            Func<string, string[]> arr = name => { var m = Regex.Match(js, "\"" + name + "\"\\s*:\\s*\\[([^\\]]*)\\]"); return m.Success ? m.Groups[1].Value.Split(',') : new string[0]; };
-            var t = arr("time"); var c = arr("weather_code"); var tp = arr("temperature_2m"); var dy = arr("is_day");
-            var res = new List<HourForecast>();
-            for (int i = 0; i < t.Length && i < c.Length && i < tp.Length; i++)
-            {
-                if (c[i].Trim() == "null" || tp[i].Trim() == "null") continue;
-                res.Add(new HourForecast { Time = DateTime.ParseExact(t[i].Trim().Trim('"'), "yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture), Code = int.Parse(c[i].Trim()),
-                    Temp = double.Parse(tp[i].Trim(), CultureInfo.InvariantCulture), Day = i >= dy.Length || dy[i].Trim() != "0" });
-            }
-            return res;
-        }
-    }
-
     // "See more" opens the default browser to a weather page for the current location (generic — works for any place).
     static void OpenWeatherPage()
     {
@@ -978,38 +957,54 @@ static partial class FanaticBar
 
     sealed class WeatherPopup : SkyPopup
     {
-        bool loading = forecast == null || (DateTime.Now - forecastAt).TotalMinutes > 30;
+        bool locating, screenshot; int hourTop; string locationError;
+        public WeatherPopup() { WeatherChanged += Refreshed; }
+        protected override void Dispose(bool d) { if (d) WeatherChanged -= Refreshed; base.Dispose(d); }
+        void Refreshed()
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+            foreach (Control c in Controls) { var list = c as HourList; if (list != null) hourTop = list.ScrollPosition; }
+            Relayout();
+        }
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            if (loading)
+            if (!screenshot && (forecast == null || (DateTime.Now - forecastAt).TotalMinutes > WeatherMinutes)) RefreshWeatherSoon();
+        }
+        void Locate(bool wifi)
+        {
+            if (locating) return; locating = true; locationError = null; Refreshed();
+            ThreadPool.QueueUserWorkItem(_ =>
             {
-                ThreadPool.QueueUserWorkItem(_ =>
+                string error = null; bool ok;
+                lock (weatherFetchLock)
                 {
-                    try { var f = FetchForecast(); forecast = f; forecastAt = DateTime.Now; forecastError = null; }
-                    catch (Exception ex) { forecastError = ex.Message; Log("forecast: " + ex.Message); }
-                    try { BeginInvoke(new Action(() => { loading = false; if (!IsDisposed) Relayout(); })); } catch { loading = false; }
-                });
-            }
+                    ok = wifi ? ResolveByWifi(null, out error) : ResolveByIp();
+                    if (ok) PollWeather();
+                }
+                try { BeginInvoke(new Action(() => { locating = false; locationError = ok ? null : error ?? Strings.T("geo.wifi_no_fix"); Refreshed(); })); } catch (InvalidOperationException) { }
+            });
+        }
+        protected override bool ShowWithoutActivation { get { return screenshot; } }
+        public void Preview()
+        {
+            // WM_PRINT needs visible native child controls. Show offscreen without activation, hooks or network work.
+            screenshot = true; Relayout(); Location = new Point(-10000, -10000); Show();
         }
         protected override List<Control> Build()
         {
             var rows = new List<Control>();
             rows.Add(MakeLabel(Strings.T("weather.forecast.title", GeoPlace), Foreground, 11, true));
-            // manual location refresh (A5): resolve by IP, then refetch the forecast + re-render the tray weather.
-            rows.Add(Button(Strings.T("geo.update"), "", () =>
-            {
-                ThreadPool.QueueUserWorkItem(_ =>
-                {
-                    bool ok = ResolveByIp();
-                    if (ok) { try { forecast = FetchForecast(); forecastAt = DateTime.Now; forecastError = null; } catch (Exception ex) { forecastError = ex.Message; Log("forecast: " + ex.Message); } }
-                    try { ui.Post(__ => RenderWeather(), null); } catch { }
-                    try { BeginInvoke(new Action(() => { if (!IsDisposed) Relayout(); })); } catch { }
-                });
-            }));
-            if (forecast != null && forecast.Count > 0) rows.Add(new HourList(forecast));
-            var status = RowLabel(loading ? Strings.T("weather.loading") : forecast == null ? (forecastError != null ? Strings.T("weather.no_data_err", forecastError) : Strings.T("weather.no_data"))
-                : Strings.T("weather.updated", forecastAt.ToString("H:mm")));
+            var ip = Button(Strings.T("geo.update"), "", () => Locate(false));
+            var wifi = Button(Strings.T("weather.update_location_wifi"), "", () => Locate(true));
+            ip.Enabled = wifi.Enabled = !locating;
+            var buttons = new Panel { BackColor = Background, Width = ip.Width + Px(12) + wifi.Width, Height = Math.Max(ip.Height, wifi.Height) };
+            buttons.Controls.Add(ip); buttons.Controls.Add(wifi); wifi.Location = new Point(ip.Width + Px(12), 0); rows.Add(buttons);
+            int errorHeight = 0;
+            if (locationError != null) { var error = RowLabel(locationError); error.MaximumSize = new Size(Px(480), 0); error.AutoSize = true; error.Size = error.GetPreferredSize(error.MaximumSize); rows.Add(error); errorHeight = error.Height + Gap; }
+            if (forecast != null && forecast.Count > 0) rows.Add(new HourList(forecast, hourTop, errorHeight));
+            var status = RowLabel(forecast != null ? Strings.T("weather.updated", forecastAt.ToString("HH:mm"))
+                : forecastError != null ? Strings.T("weather.no_data_err", forecastError) : Strings.T("weather.loading"));
             // footer: the status on the left, the "more" link on the right (a web weather page for the current place)
             var link = new LinkLabel { Text = Strings.T("weather.more") + " ↗", Font = SkyFont(9, false), AutoSize = true, BackColor = Background, LinkColor = Light, ActiveLinkColor = Foreground, LinkBehavior = LinkBehavior.HoverUnderline };
             link.LinkClicked += (s, e) => { Close(); OpenWeatherPage(); };
@@ -1027,17 +1022,20 @@ static partial class FanaticBar
     // themed scroll bar instead of the grey system one. Row: time, weather picture, name, temperature (colour by sign).
     sealed class HourList : Control
     {
-        const int Rows = 10;
+        readonly int Rows;
         readonly List<HourForecast> hours; readonly Font font, bold; readonly int rowH, timeW; int top;
-        public HourList(List<HourForecast> hours)
+        public HourList(List<HourForecast> hours, int start = 0, int extraHeight = 0)
         {
             this.hours = hours; DoubleBuffered = true; BackColor = Background; font = SkyFont(11, false); bold = SkyFont(11, true);
             SetStyle(ControlStyles.Selectable | ControlStyles.UserMouse, true);
-            rowH = Px(36); timeW = TextRenderer.MeasureText("00:00", bold, Size.Empty, TextFormatFlags.NoPadding).Width + Px(16);
-            Size = new Size(timeW + Px(30) + Px(12) + Px(190) + Px(70) + Px(12), rowH * Math.Min(Rows, hours.Count));
+            rowH = Px(72); Rows = Math.Max(3, Math.Min(10, (Screen.PrimaryScreen.WorkingArea.Height - Px(210) - extraHeight) / rowH));
+            top = Math.Max(0, Math.Min(Math.Max(0, hours.Count - Rows), start));
+            timeW = TextRenderer.MeasureText("00:00", bold, Size.Empty, TextFormatFlags.NoPadding).Width + Px(16);
+            Size = new Size(timeW + Px(68) + Px(12) + Px(190) + Px(70) + Px(12), rowH * Math.Min(Rows, hours.Count));
         }
         protected override void Dispose(bool disp) { if (disp) { font.Dispose(); bold.Dispose(); } base.Dispose(disp); }
         int MaxTop { get { return Math.Max(0, hours.Count - Rows); } }
+        public int ScrollPosition { get { return top; } }
         void ScrollTo(int t) { t = Math.Max(0, Math.Min(MaxTop, t)); if (t != top) { top = t; Invalidate(); } }
         protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); Focus(); }   // the wheel goes to the focused control
         protected override void OnMouseWheel(MouseEventArgs e) { ScrollTo(top - Math.Sign(e.Delta) * 2); }
@@ -1064,9 +1062,9 @@ static partial class FanaticBar
                 var h = hours[top + r]; int y = r * rowH; bool now = top + r == 0;
                 TextRenderer.DrawText(g, h.Time.ToString("HH:mm"), now ? bold : font, new Rectangle(Px(4), y, timeW, rowH), now ? Light : h.Day ? Foreground : Muted, f);
                 var pic = MeteoconFor(h.Code, h.Day);
-                if (pic != null) g.DrawImage(pic, timeW - Px(2), y + (rowH - Px(34)) / 2, Px(34), Px(34));
-                else using (var icon = DrawWeatherSymbol(Px(28), h.Code, false)) g.DrawImage(icon, timeW + (Px(30) - Px(28)) / 2, y + (rowH - Px(28)) / 2);
-                TextRenderer.DrawText(g, WmoName(h.Code), font, new Rectangle(timeW + Px(30) + Px(12), y, Px(190), rowH), TextCol, f);
+                if (pic != null) g.DrawImage(pic, timeW - Px(2), y + (rowH - Px(68)) / 2, Px(68), Px(68));
+                else using (var icon = DrawWeatherSymbol(Px(68), h.Code, false)) g.DrawImage(icon, timeW, y + (rowH - Px(68)) / 2);
+                TextRenderer.DrawText(g, WmoName(h.Code), font, new Rectangle(timeW + Px(68) + Px(12), y, Px(190), rowH), TextCol, f);
                 TextRenderer.DrawText(g, T(h.Temp), bold, new Rectangle(Width - Px(70) - Px(12), y, Px(70), rowH), TempColour(h.Temp), f | TextFormatFlags.Right);
             }
             if (MaxTop > 0)

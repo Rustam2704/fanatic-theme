@@ -25,6 +25,15 @@ static partial class FanaticBar
     [DllImport("user32.dll")] static extern int GetSystemMetricsForDpi(int i, uint dpi);
     [DllImport("user32.dll")] static extern uint GetDpiForSystem();
     [DllImport("kernel32.dll")] static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int id);
+    [DllImport("kernel32.dll")] static extern bool AttachConsole(uint pid);
+    static void DiagnosticConsole()
+    {
+        IntPtr output = GetStdHandle(-11);
+        if (output == IntPtr.Zero || output == new IntPtr(-1)) AttachConsole(0xFFFFFFFF /*parent*/);
+        // Setting Console.OutputEncoding calls SetConsoleOutputCP and fails in a redirected /target:winexe process.
+        Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false)) { AutoFlush = true });
+    }
     [StructLayout(LayoutKind.Sequential)] struct MEMORYSTATUSEX { public uint dwLength, dwMemoryLoad; public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
     [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX m);
 
@@ -41,7 +50,7 @@ static partial class FanaticBar
     // Draw = the last picture (redrawn when the pointer comes or goes: Hot = full brightness, otherwise dimmed, owner batch 4)
     class Slot { public NotifyIcon Ni; public string Key = ""; public Func<int, Bitmap> Draw; public bool Hot; }
     static SynchronizationContext ui;
-    static Slot wifi, ping, cpu, ram, wSym, wTemp, bat, batPct, audio, gear, day, week, hours, minutes;
+    static Slot wifi, ping, cpu, ram, gpu, wSym, wTemp, bat, batPct, audio, gear, day, week, hours, minutes;
 
     static void Log(string m)
     {
@@ -94,7 +103,7 @@ static partial class FanaticBar
     // Flyouts / menus / tooltips: see-through background, solid text, like the terminal at opacity < 100 without acrylic.
     // A flat Form.Opacity faded the text too, and the DWM acrylic backdrop blurred the sky's stars away (prototype 25.10, b9-*).
     // ACCENT_ENABLE_TRANSPARENTGRADIENT turns the pure-black Background into GlassTint over the desktop; anything else stays solid.
-    const int GlassTint = unchecked((int)0xB0000000);   // AABBGGRR: black, alpha 0xB0 (69 %); 0x99 is more see-through
+    const int GlassTint = unchecked((int)0xE6000000);   // AABBGGRR: black, alpha 0xE6 (90 %, owner); 0xB0 = 69 %, 0x99 more see-through
     const int ACCENT_ENABLE_TRANSPARENTGRADIENT = 2;
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int value, int size);
     static void Glass(IntPtr h)
@@ -269,55 +278,15 @@ static partial class FanaticBar
         if (!fonts.TryGetValue(name, out f)) { try { f = new FontFamily(name); } catch { f = name == "Consolas" ? FontFamily.GenericMonospace : Family("Consolas"); } fonts[name] = f; }
         return f;
     }
-    // ---- Diablo digits (owner, batch 3): every number but the DSEG7 clock is drawn in the whitebook panel font ----
-    // Tabular like glyphs.tabular_paths(): cells of the widest digit, DIGIT_GAP (3 px at the 36 px em = 80 units) apart, a short
-    // number takes the right cells; so a value change never moves anything. Units: font units, y down, ink from 0 to CAP.
-    const float DiabloGap = Diablo.DIGIT_GAP * Diablo.EM / 36f;
-    static float diabloCell = -1;
-    static float DiabloCell()
-    {
-        if (diabloCell < 0) foreach (char c in "0123456789") { var g = Diablo.Glyphs[c]; diabloCell = Math.Max(diabloCell, g.XMax - g.XMin); }
-        return diabloCell;
-    }
-    static float DiabloTabularWidth(int cells) { return cells * DiabloCell() + (cells - 1) * DiabloGap; }
-    static GraphicsPath DiabloTabular(string text, int cells)
-    {
-        var all = new GraphicsPath(FillMode.Winding); float cell = DiabloCell(); int first = cells - text.Length;
-        for (int i = 0; i < text.Length; i++)
-        {
-            Diablo.G g; if (!Diablo.Glyphs.TryGetValue(text[i], out g)) continue;
-            float left = (first + i) * (cell + DiabloGap) + (cell - (g.XMax - g.XMin)) / 2;
-            using (var p = Svg(g.D)) using (var m = new Matrix(1, 0, 0, -1, left - g.XMin, Diablo.CAP + Diablo.BASE)) { p.Transform(m); all.AddPath(p, false); }
-        }
-        return all;
-    }
-    // A glyph of the panel font: digits and Latin from glyphs.json, Ukrainian capitals from DiabloCyr.ttf (tools\build-cyr.ps1).
-    // Diablo has capitals only: lowercase is drawn as capitals, ʼ as '; anything else is a space.
-    static Diablo.G DiabloGlyph(char c)
-    {
-        Diablo.G g; if (c == 'ʼ') c = '\'';
-        if (Diablo.Glyphs.TryGetValue(c, out g) || DiabloCyr.Glyphs.TryGetValue(c, out g)) return g;
-        char u = char.ToUpperInvariant(c);
-        return u != c ? DiabloGlyph(u) : DiabloCyr.Glyphs[' '];
-    }
-    // Proportional Diablo text (layout codes, month, weekday): ink from x 0; width in units through `width`.
-    static GraphicsPath DiabloText(string text, out float width)
-    {
-        var all = new GraphicsPath(FillMode.Winding); width = 0; if (text.Length == 0) return all;
-        float pen = -DiabloGlyph(text[0]).XMin;
-        for (int i = 0; i < text.Length; i++)
-        {
-            var g = DiabloGlyph(text[i]);
-            if (g.D.Length > 0) using (var p = Svg(g.D)) using (var m = new Matrix(1, 0, 0, -1, pen, Diablo.CAP + Diablo.BASE)) { p.Transform(m); all.AddPath(p, false); }
-            if (i < text.Length - 1) pen += g.Adv; else width = pen + (g.D.Length > 0 ? g.XMax : 0);
-        }
-        return all;
-    }
-    // Diablo text with its cap height `cap` centred on cy, from x (g = null: only measure); returns the ink width.
+    // All panel text goes through the shared font selector, including tabular digits and fallback.
+    static float DiabloTabularWidth(int cells) { return TextFont.TabularWidth(cells); }
+    static GraphicsPath DiabloTabular(string text, int cells) { return TextFont.Tabular(text, cells, Svg); }
+    static GraphicsPath DiabloText(string text, out float width) { return TextFont.Text(text, Svg, out width); }
+    // Panel text with its cap height `cap` centred on cy, from x (g = null: only measure); returns the ink width.
     static readonly Dictionary<string, float> diabloWidths = new Dictionary<string, float>();   // measuring only: no paths built
     static float DiabloLine(Graphics g, string s, float x, float cy, float cap, Color col)
     {
-        float w, k = cap / Diablo.CAP;
+        float w, k = cap / TextFont.CAP;
         if (g == null)
         {
             lock (diabloWidths) if (diabloWidths.TryGetValue(s, out w)) return w * k;
@@ -352,14 +321,14 @@ static partial class FanaticBar
         }
         return bmp;
     }
-    // Two tabular Diablo cells fitted into the tray square with the style's proportions (W, H; italic = sheared like the old italic).
+    // Two tabular panel-font cells fitted into the tray square with the style's proportions (W, H; italic = sheared like the old italic).
     static Bitmap DrawDiablo(int size, string t, Color col, TextStyle ts)
     {
         Graphics g; var bmp = NewIcon(size, out g);
         using (g)
         using (var path = DiabloTabular(t.Trim(), 2))
         {
-            float w = DiabloTabularWidth(2), h = Diablo.CAP, slant = (ts.Style & FontStyle.Italic) != 0 ? 0.2f : 0f;
+            float w = DiabloTabularWidth(2), h = TextFont.CAP, slant = (ts.Style & FontStyle.Italic) != 0 ? 0.2f : 0f;
             if (slant > 0) using (var sh = new Matrix(1, 0, -slant, 1, slant * h, 0)) path.Transform(sh);
             w += slant * h;
             float kx = Math.Min(ts.W * size / w, ts.H > 0 ? size / h : float.MaxValue), ky = ts.H > 0 ? ts.H * size / h : kx;
@@ -652,7 +621,7 @@ static partial class FanaticBar
         using (g) using (var m = Fit(5, 11, 56, 42, size)) { g.Transform = m; SpeakerBody(g, vol, muted); }
         return bmp;
     }
-    // speaker_body(): horn, three arcs (lit by volume, unlit at 0.14), muted: the red Diablo "O" of bar.ps1 Render-Audio (owner, batch 4:
+    // speaker_body(): horn, three arcs (lit by volume, unlit at 0.14), muted: the red panel-font "O" of bar.ps1 Render-Audio (owner, batch 4:
     // "O like mine instead of the cross"), 22 high, centred on x 45, its middle at y 32; speaker coordinates
     static void SpeakerBody(Graphics g, int vol, bool muted)
     {
@@ -665,8 +634,10 @@ static partial class FanaticBar
                 using (var a = Svg(arcs[i])) using (var pen = RoundPen(i < lit ? ac[i] : Alpha(ac[i], 0.14), 4)) g.DrawPath(pen, a);
             if (muted)
             {
-                var o = Diablo.Glyphs['O']; float s = 22f / Diablo.CAP, xo = 45 - (o.XMin + o.XMax) / 2 * s, yo = 32 + 22f / 2 + Diablo.BASE * s;
-                using (var p = Svg(o.D)) using (var m = new Matrix(s, 0, 0, -s, xo, yo)) using (var b = new SolidBrush(Danger)) { p.Transform(m); g.FillPath(b, p); }
+                float width, scale = 22f / TextFont.CAP;
+                using (var p = DiabloText("O", out width))
+                using (var m = new Matrix(scale, 0, 0, scale, 45 - width * scale / 2, 32 - 22f / 2))
+                using (var b = new SolidBrush(Danger)) { p.Transform(m); g.FillPath(b, p); }
             }
         }
     }
@@ -738,7 +709,7 @@ static partial class FanaticBar
     {
         Strings.Load(Strings.ResolveLang(SettingStr("language", "en")));
         LoadLocalizedArrays();
-        foreach (var s in new[] { wifi, ping, cpu, ram, wSym, wTemp, bat, batPct, audio, day, week, hours, minutes }) if (s != null) s.Key = "";
+        foreach (var s in new[] { wifi, ping, cpu, ram, gpu, wSym, wTemp, bat, batPct, audio, day, week, hours, minutes }) if (s != null) s.Key = "";
         foreach (Action a in new Action[] { PollClock, PollWifi, PollBattery, PollAudio, RenderWeather, PollSys })
             try { a(); } catch (Exception ex) { Log("reloadlang " + a.Method.Name + ": " + ex.Message); }
     }
@@ -824,6 +795,7 @@ static partial class FanaticBar
     static long lastIdle, lastTotal;
     static void PollSys()
     {
+        PollGpu();
         long idle, kernel, user;
         if (GetSystemTimes(out idle, out kernel, out user))
         {
@@ -866,6 +838,7 @@ static partial class FanaticBar
     static volatile bool batteryPresent = true;
     static void PollAudio()
     {
+        PollMic();
         int vol = -1; bool muted = false;
         IMMDevice dev = null; object o = null;
         try
@@ -892,31 +865,11 @@ static partial class FanaticBar
 
     static int wCode = -1; static bool wDay = true; static double? wTempVal; static DateTime wOk = DateTime.MinValue;
     static System.Threading.Timer weatherTimer;
-    static void PollWeather()
-    {
-        bool ok = false;
-        try
-        {
-            EnsureLocation();
-            if (!HasLocation) { weatherTimer.Change(2 * 60000, Timeout.Infinite); RenderWeather(); return; }   // no location yet; retry soon
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            using (var wc = new WebClient { Encoding = System.Text.Encoding.UTF8 })
-            {
-                string js = wc.DownloadString("https://api.open-meteo.com/v1/forecast?" + GeoQuery + "&current=temperature_2m,weather_code,is_day&timezone=auto");
-                var cur = Regex.Match(js, "\"current\"\\s*:\\s*\\{([^}]*)\\}").Groups[1].Value;
-                var t = Regex.Match(cur, "\"temperature_2m\"\\s*:\\s*(-?[\\d.]+)"); var c = Regex.Match(cur, "\"weather_code\"\\s*:\\s*(\\d+)");
-                var dn = Regex.Match(cur, "\"is_day\"\\s*:\\s*(\\d)");
-                if (t.Success && c.Success) { wTempVal = double.Parse(t.Groups[1].Value, Inv); wCode = int.Parse(c.Groups[1].Value); wDay = !dn.Success || dn.Groups[1].Value != "0"; wOk = DateTime.Now; ok = true; }
-            }
-        }
-        catch (Exception ex) { Log("weather: " + ex.Message); }
-        weatherTimer.Change(ok ? 15 * 60000 : 2 * 60000, Timeout.Infinite);   // retry sooner after a failure
-        RenderWeather();
-    }
     static void RenderWeather()
     {
-        bool stale = wOk == DateTime.MinValue || (DateTime.Now - wOk).TotalMinutes > 60;
-        int code = wCode; bool day = wDay; double? temp = wTempVal;
+        BigChanged();
+        bool stale, day; int code; double? temp;
+        lock (weatherStateLock) { stale = wOk == DateTime.MinValue || (DateTime.Now - wOk).TotalMinutes > 60; code = wCode; day = wDay; temp = wTempVal; }
         string nm = WmoName(code);
         string place = GeoPlace;   // stored location name (A5), falls back to the localised default label
         string tip = temp == null ? Strings.T("tip.weather.no_data")
@@ -936,10 +889,10 @@ static partial class FanaticBar
         bool idle = sessionLocked || displayOff, battery = SystemInformation.PowerStatus.PowerLineStatus == PowerLineStatus.Offline;
         Rate(tWifi, idle ? -1 : battery ? 6000 : 3000);
         Rate(tPing, idle ? -1 : battery ? 5000 : 1000);   // 1 s only on mains with somebody looking
-        Rate(tSys, idle ? -1 : battery ? 4000 : 2000);
-        Rate(tAudio, idle ? -1 : battery ? 2000 : 1000);
+        Rate(tSys, idle ? -1 : 2000);
+        Rate(tAudio, idle ? -1 : 1000);
         Rate(tBat, idle ? 5000 : battery ? 2000 : 1000);   // keeps the automatic power mode current even when idle
-        var b = big; if (b != null) ui.Post(_ => { if (!b.IsDisposed) b.SetRate(idle ? 0 : battery ? 500 : 250); }, null);
+        var b = big; if (b != null) ui.Post(_ => { if (!b.IsDisposed) b.SetRate(idle ? 0 : 250); }, null);
     }
     static void Rate(System.Threading.Timer t, int ms) { if (t == null) return; if (ms < 0) t.Change(Timeout.Infinite, Timeout.Infinite); else t.Change(0, ms); }
     // GUID_CONSOLE_DISPLAY_STATE: Windows sends the current state at once, then every change (0 off, 1 on, 2 dimmed).
@@ -989,10 +942,11 @@ static partial class FanaticBar
         rows.Add(row(new Func<int, Bitmap>[] { s => DrawAudio(s, 20, false), s => DrawAudio(s, 50, false), s => DrawAudio(s, 90, false), s => DrawAudio(s, 50, true), s => DrawAudio(s, -1, false), s => DrawGear(s) }));
         rows.Add(row(new Func<int, Bitmap>[] { s => DrawSeg(s, "21"), s => DrawSeg(s, "47"), s => DrawSeg(s, "09"), s => DrawDiablo(s, "24", Foreground, DayText), s => DrawDiablo(s, "05", Foreground, DayText),
                                                s => DrawDiablo(s, "15", Foreground, DayText), s => DrawDiablo(s, "31", Foreground, DayText) }));
+        rows.Add(row(new Func<int, Bitmap>[] { s => DrawGpu(s, 0), s => DrawGpu(s, 1), s => DrawGpu(s, 2), s => DrawGpu(s, 3), s => DrawGpu(s, 4) }));
         var wk = new List<Func<int, Bitmap>>(); for (int i = 0; i < 7; i++) { int w = i; wk.Add(s => DrawDiabloWord(s, UaWeek[w], UaWeek, WeekdayColour[w], WeekText)); }
         rows.Add(row(wk.ToArray()));
         int cols = 0; foreach (var r in rows) cols = Math.Max(cols, r.Count);
-        using (var outBmp = new Bitmap(cols * cellW, rows.Count * cellH))
+        using (var outBmp = new Bitmap(cols * cellW, rows.Count * cellH + 4 * 66))
         using (var g = Graphics.FromImage(outBmp))
         {
             g.Clear(Color.FromArgb(16, 16, 16));
@@ -1006,6 +960,20 @@ static partial class FanaticBar
                     g.DrawImageUnscaled(b, x * cellW + (cellW - size) / 2, y * cellH + size * z + pad * 2);
                     b.Dispose();
                 }
+            // Real renderer, four deterministic samples: positive, negative, stale and unknown; three mic states.
+            bigWifiLit = 4; lastPing = 23; pingKnown = true; bigBatShown = 76; bigVol = 65;
+            ui = new SynchronizationContext();
+            using (var bar = new BigBar(true))
+            {
+                bar.Size = new Size(outBmp.Width, 66);
+                double?[] temperatures = { 12, -7, 8, null };
+                for (int i = 0; i < temperatures.Length; i++)
+                {
+                    wTempVal = temperatures[i]; wCode = i == 1 ? 71 : 2; wOk = i >= 2 ? DateTime.Now.AddHours(-3) : DateTime.Now;
+                    bigMicInUse = i == 1; bigMicMuted = i == 2;
+                    using (var strip = new Bitmap(bar.Width, bar.Height)) { bar.DrawToBitmap(strip, bar.ClientRectangle); g.DrawImageUnscaled(strip, 0, rows.Count * cellH + i * 66); }
+                }
+            }
             outBmp.Save(file, ImageFormat.Png);
         }
     }
@@ -1015,7 +983,7 @@ static partial class FanaticBar
     {
         var lines = new List<string>();
         ui = new ProbeContext(lines);
-        foreach (var f in new[] { "wifi", "ping", "cpu", "ram", "wSym", "wTemp", "bat", "batPct", "audio", "day", "week", "hours", "minutes" })
+        foreach (var f in new[] { "wifi", "ping", "cpu", "ram", "gpu", "wSym", "wTemp", "bat", "batPct", "audio", "day", "week", "hours", "minutes" })
             typeof(FanaticBar).GetField(f, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).SetValue(null, new Slot { Ni = null });
         PollSys(); Thread.Sleep(1000); PollSys(); PollWifi(); PollPing(); PollBattery(); PollAudio(); PollClock();
         weatherTimer = new System.Threading.Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite); PollWeather();
@@ -1157,7 +1125,7 @@ static partial class FanaticBar
     // Forget the drawn state of every slot and draw them all again (new HICONs through NIM_MODIFY).
     static void RefreshAllIcons()
     {
-        foreach (var s in new[] { wifi, ping, cpu, ram, wSym, wTemp, bat, batPct, audio, day, week, hours, minutes }) if (s != null) s.Key = "";
+        foreach (var s in new[] { wifi, ping, cpu, ram, gpu, wSym, wTemp, bat, batPct, audio, day, week, hours, minutes }) if (s != null) s.Key = "";
         ThreadPool.QueueUserWorkItem(_ =>
         {
             foreach (Action a in new Action[] { PollClock, PollWifi, PollBattery, PollAudio, RenderWeather, PollSys, PollPing })
@@ -1171,7 +1139,7 @@ static partial class FanaticBar
             var have = TrayButtons(tb);
             // The owner's two other tray tools join the block: CPU temperature (fan-tray) left of CPU, layout (keyboard-switch) left of the date.
             var want = new List<string>();
-            foreach (var s in new object[] { wifi, ping, "fan-tray", cpu, ram, wSym, wTemp, bat, batPct, audio, "keyboard-switch", day, week, hours, minutes, gear })
+            foreach (var s in new object[] { wifi, ping, "fan-tray", cpu, ram, gpu, wSym, wTemp, bat, batPct, audio, "keyboard-switch", day, week, hours, minutes, gear })
             {
                 var name = s as string; var slot = s as Slot;
                 if (name != null) { var k = ForeignButton(have, name); if (k != null) want.Add(k); }
@@ -1217,7 +1185,18 @@ static partial class FanaticBar
         // localisation (A9): load the chosen language (shared file wins, so the sky's switcher changes the bar too) and
         // fill the date/weekday/month arrays before any rendering path
         Strings.Load(Strings.ResolveLang(SettingStr("language", "en")));
+        if (args.Length > 0 && (args[0] == "--geo-wifi" || args[0] == "--gpu-probe" || args[0] == "--wloc-selftest")) DiagnosticConsole();
         LoadLocalizedArrays();
+        if (args.Length == 1 && args[0] == "--gpu-probe") { GpuProbe(); return; }
+        if (args.Length == 2 && args[0] == "--wloc-selftest") { WlocSelftest(args[1]); return; }
+        if (args.Length == 1 && args[0] == "--geo-wifi")
+        {
+            string error; bool ok = ResolveByWifi(Console.WriteLine, out error);
+            if (ok) PollWeather();   // persist the first forecast too; this diagnostic never creates tray icons
+            if (!ok) { Console.WriteLine(error ?? Strings.T("geo.wifi_no_fix")); Environment.ExitCode = 1; }
+            return;
+        }
+        if (args.Length == 2 && args[0] == "--font-specimen") { FontSpecimen(args[1]); return; }
         if (args.Length == 2 && args[0] == "--shot") { Shot(args[1]); return; }
         if (args.Length == 2 && args[0] == "--shot-fly") { ShotFly(args[1]); return; }
         if (args.Length == 2 && args[0] == "--probe") { Probe(args[1]); return; }
@@ -1237,6 +1216,7 @@ static partial class FanaticBar
             Application.ThreadException += (s, e) => Log("ThreadException: " + e.Exception);
             ui = new WindowsFormsSynchronizationContext();
             SynchronizationContext.SetSynchronizationContext(ui);
+            LoadLocation(); LoadWeatherCache();   // disk data is ready before creating any weather surface
             int sz = IconSize();
             // Left click = the quick action / flyout; right click = a small labelled menu (BigBar.cs holds the shared actions).
             Func<Action<bool, Rectangle>, MouseEventHandler> on = a => (s, e) => a(e.Button == MouseButtons.Right, IconRect((NotifyIcon)s));
@@ -1253,14 +1233,16 @@ static partial class FanaticBar
             audio = NewSlot(Strings.T("slot.audio"), DrawAudio(sz, -1, false), sound);
             batPct = NewSlot(Strings.T("slot.battery"), DrawDash(sz, Muted), power);
             bat = NewSlot(Strings.T("slot.battery"), DrawBattery(sz, 0, false), power);
-            wTemp = NewSlot(Strings.T("slot.weather"), DrawWeatherTemp(sz, null, true), weather);
-            wSym = NewSlot(Strings.T("slot.weather"), DrawWeatherSymbol(sz, -1, true), weather);
+            bool cachedStale = wOk == DateTime.MinValue || (DateTime.Now - wOk).TotalMinutes > 60;
+            wTemp = NewSlot(Strings.T("slot.weather"), DrawWeatherTemp(sz, wTempVal, cachedStale), weather);
+            wSym = NewSlot(Strings.T("slot.weather"), DrawWeatherSymbol(sz, wCode, cachedStale, wDay), weather);
+            gpu = NewSlot(Strings.T("slot.gpu"), DrawGpu(sz, 0), tm);
             ram = NewSlot(Strings.T("slot.memory"), DrawSys(sz, true, 0), tm);
             cpu = NewSlot(Strings.T("slot.cpu"), DrawSys(sz, false, 0), tm);
             ping = NewSlot(Strings.T("slot.ping"), DrawDash(sz, Danger), net);
             wifi = NewSlot("Wi-Fi", DrawWifi(sz, -1), net);
             bigMode = Setting("bigIndicators", true);
-            if (bigMode) StartBigMode();   // the native clock: HideClock policy, set / removed elevated (README)
+            if (bigMode) { StartBigMode(); StartLayoutEvents(); }   // the native clock: HideClock policy, set / removed elevated (README)
             tWifi = Every(3000, () => { PollIface(); PollWifi(); }); tPing = Every(1000, PollPing); tSys = Every(2000, PollSys);
             tBat = Every(1000, PollBattery); tAudio = Every(1000, PollAudio);
             var timers = new List<System.Threading.Timer> {
@@ -1283,6 +1265,11 @@ static partial class FanaticBar
             ThreadPool.RegisterWaitForSingleObject(quit, (st, to) => ui.Post(_ => Application.Exit(), null), null, -1, true);
             var reorder = new EventWaitHandle(false, EventResetMode.AutoReset, "fanatic.Bar.Reorder");
             ThreadPool.RegisterWaitForSingleObject(reorder, (st, to) => ui.Post(_ => ArrangeTray(), null), null, -1, false);
+            var weatherRefresh = new EventWaitHandle(false, EventResetMode.AutoReset, "fanatic.Bar.WeatherRefresh");
+            ThreadPool.RegisterWaitForSingleObject(weatherRefresh, (st, to) =>
+            {
+                lock (weatherFetchLock) { double lat = geoLat, lon = geoLon; LoadLocation(); if (lat != geoLat || lon != geoLon) PollWeather(); }
+            }, null, -1, false);
             // keep the block in order: shortly after start, then every 30 s (Explorer restarts, battery slots appearing)
             // every 15 s: re-promote our icons if Explorer filed them as new (pref 0, see TrayPromote.cs), then keep the order
             timers.Add(new System.Threading.Timer(_ => { PromoteOwnTrayIcons(() => ui.Post(__ => ArrangeTray(), null)); ui.Post(__ => ArrangeTray(), null); }, null, 2000, 15000));
@@ -1298,7 +1285,7 @@ static partial class FanaticBar
             var hoverTimer = new System.Windows.Forms.Timer { Interval = 150 }; hoverTimer.Tick += (o, e) => CheckHoverLeft(); hoverTimer.Start();
             Application.Run();
             foreach (var t in timers) t.Dispose(); weatherTimer.Dispose();
-            foreach (var s in new[] { wifi, ping, cpu, ram, wSym, wTemp, bat, batPct, audio, gear, day, week, hours, minutes }) if (s != null) s.Ni.Visible = false;
+            foreach (var s in new[] { wifi, ping, cpu, ram, gpu, wSym, wTemp, bat, batPct, audio, gear, day, week, hours, minutes }) if (s != null) s.Ni.Visible = false;
             foreach (var s in spacers) s.Ni.Visible = false;
         }
     }

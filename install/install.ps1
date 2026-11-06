@@ -140,20 +140,23 @@ if ($MsiFan) {
   foreach ($n in 'msi-fan-eco', 'msi-fan-balanced', 'msi-fan-performance') { $svc.GetFolder('\').GetTask($n).SetSecurityDescriptor($sd, 0) }
 } else { Note 'fan-tray / msi-fan: skipped (MSI EC only; add -MsiFan on such a laptop)' }
 
-# ---------------------------------------------------------------- 5. restart Explorer cleanly, start everything
-Step '5. Restart Explorer (clean) and start the programs'
-& (Join-Path $Root 'restart-explorer.ps1') -Root $Root
-foreach ($t in 'keyboard-switch', 'fan-tray') { Start-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
-
-# ---------------------------------------------------------------- 6. tray: our icons stay, everything else folds into ^
 # Run an action once in the user's session, un-elevated, and wait for it (Explorer's tray object and WinRT
 # per-user settings refuse an elevated caller)
 function RunAsUserOnce($name, $action) {
   Register-ScheduledTask -TaskName $name -Action $action -Principal (New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited) -Settings $once -Force | Out-Null
   Start-ScheduledTask -TaskName $name; Start-Sleep 1
-  for ($i = 0; $i -lt 60 -and (Get-ScheduledTask -TaskName $name).State -in 'Running', 'Queued'; $i++) { Start-Sleep 1 }
+  for ($i = 0; $i -lt 90 -and (Get-ScheduledTask -TaskName $name).State -in 'Running', 'Queued'; $i++) { Start-Sleep 1 }
   Unregister-ScheduledTask -TaskName $name -Confirm:$false
 }
+
+# ---------------------------------------------------------------- 5. restart Explorer cleanly, start everything
+# un-elevated: an Explorer started from this elevated script came up without the fresh HideClock / HideSCA* policies
+# (native clock, volume, power, network icons stayed next to the bar) and the bar's spacers did not get their room
+Step '5. Restart Explorer (clean, as the user) and start the programs'
+RunAsUserOnce 'fanatic-explorer-once' (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $Root 'restart-explorer.ps1')`" -Root `"$Root`"")
+foreach ($t in 'keyboard-switch', 'fan-tray') { Start-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
+
+# ---------------------------------------------------------------- 6. tray: our icons stay, everything else folds into ^
 Step '6. Tray: keep our icons on the taskbar, fold the rest into ^'
 Start-Sleep 10   # Windows accepts the preference only for an icon it has already seen
 $tp = Join-Path $Root 'tray-prefs\tray-prefs.exe'

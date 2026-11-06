@@ -1,5 +1,5 @@
 ﻿// Big indicators (owner, bigind-TASK.md): Wi-Fi + ping, battery, sound, keyboard layout, date and clock drawn the full height of the
-// taskbar in the whitebook style, instead of 20 px tray icons. CPU / RAM / weather (and fan-tray) stay tray icons.
+// taskbar in the whitebook style, instead of 20 px tray icons. CPU / RAM / GPU (and fan-tray) stay tray icons.
 // Technique: invisible "spacer" tray icons at the right end of our block reserve the room - Explorer lays them out itself, so
 // the room follows the taskbar, DPI and resolution - and a child window of Shell_TrayWnd is kept exactly over them.
 // fanatic-bar.json { "bigIndicators": false } goes back to the tray icons. The native clock is hidden (HideClock policy) while on.
@@ -32,7 +32,7 @@ static partial class FanaticBar
     {
         if (!right) { SkyPopup.ToggleAt(box, () => new WeatherPopup()); return; }
         MenuAt(box, Item(Strings.T("menu.weather.forecast"), "", () => FlyAt(box, () => new WeatherPopup())),
-            Item(Strings.T("menu.weather.refresh"), "", () => { forecastAt = DateTime.MinValue; ThreadPool.QueueUserWorkItem(_ => PollWeather()); }));
+            Item(Strings.T("menu.weather.refresh"), "", () => { RefreshWeatherSoon(); }));
     }
     static void PowerClick(bool right, Rectangle box)
     {
@@ -102,6 +102,7 @@ static partial class FanaticBar
     {
         if (!right)
         {
+            if (RequestLayoutCycle()) return;
             int cur = LayoutIndex(target);
             SwitchLayout((cur < 0 ? 0 : cur + 1) % LangKlids.Length, target);
             return;
@@ -127,7 +128,7 @@ static partial class FanaticBar
     static void StartBigMode()
     {
         bool created; bigModeMutex = new Mutex(false, "fanatic.Bar.BigMode", out created);
-        foreach (var s in new[] { wifi, ping, bat, batPct, audio, day, week, hours, minutes }) s.Ni.Visible = false;
+        foreach (var s in new[] { wSym, wTemp, wifi, ping, bat, batPct, audio, day, week, hours, minutes }) s.Ni.Visible = false;
         SetHideClock(true);
         AddSpacer();
         big = new BigBar();
@@ -271,12 +272,15 @@ static partial class FanaticBar
         int hot = -1; string tipText;
         TipWindow tipWin;
 
-        public BigBar()
+        readonly bool preview;
+        public BigBar(bool preview = false)
         {
+            this.preview = preview;
+            if (preview) layout = 2;
             FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual; BackColor = Color.Black;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
             Bounds = new Rectangle(-2000, -2000, 10, 10);
-            tick.Tick += (s, e) => Tick(); tick.Start();
+            tick.Tick += (s, e) => Tick(); if (!preview) tick.Start();
         }
         protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x08000000 /*NOACTIVATE*/ | 0x80 /*TOOLWINDOW*/; return cp; } }
         protected override bool ShowWithoutActivation { get { return true; } }
@@ -304,6 +308,7 @@ static partial class FanaticBar
         }
         protected override void OnMouseLeave(EventArgs e) { hot = -1; UpdateTip(); Invalidate(); base.OnMouseLeave(e); }
 
+        public void LayoutSignal() { Tick(); Invalidate(); }
         void Tick()
         {
             // keep the layout, the second (colon blink) and the place current; the other readings invalidate through BigChanged()
@@ -337,29 +342,25 @@ static partial class FanaticBar
         }
 
         // ---- drawing ----
-        // Two tabular Diablo cells (glyphs.tabular_paths), ink centred on cy, cap height `cap`; the width is fixed whatever the value
+        // Two tabular panel-font cells, ink centred on cy, cap height `cap`; the width is fixed whatever the value
         // ("--" = a dash in the same room). Returns the width of the two cells.
         static float Digits(Graphics g, string two, float x, float cy, float cap, Color col)
         {
-            float s = cap / Diablo.CAP, w = DiabloTabularWidth(2) * s;
+            float s = cap / TextFont.CAP, w = DiabloTabularWidth(2) * s;
             if (two.Trim() == "--") { using (var pen = new Pen(col, Math.Max(1.5f, cap / 7)) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawLine(pen, x + w * 0.2f, cy, x + w * 0.8f, cy); return w; }
             using (var p = DiabloTabular(two.Trim(), 2)) using (var m = new Matrix(s, 0, 0, s, x, cy - cap / 2)) using (var b = new SolidBrush(col)) { p.Transform(m); g.FillPath(b, p); }
             return w;
         }
-        // Two tabular digits placed by their INK (x = left edge of the first digit's ink); returns the ink width.
-        static float DigitsInk(Graphics g, string two, float x, float cy, float cap, Color col)
+        // Day of the month: 1..9 without the leading zero, but in the same two-cell room (its width comes from the font's digit
+        // cell), the single digit centred in that room; 10..31 as two tabular cells. Returns the room width.
+        static float DayDigits(Graphics g, int day, float x, float cy, float cap, Color col)
         {
-            float s = cap / Diablo.CAP;
-            using (var p = DiabloTabular(two.Trim(), 2))
-            using (var m = new Matrix(s, 0, 0, s, 0, cy - cap / 2))
-            {
-                p.Transform(m); var b = p.GetBounds();
-                using (var t = new Matrix()) { t.Translate(x - b.X, 0); p.Transform(t); }
-                using (var br = new SolidBrush(col)) g.FillPath(br, p);
-                return b.Width;
-            }
+            if (day >= 10) return Digits(g, day.ToString(), x, cy, cap, col);
+            float s = cap / TextFont.CAP, room = DiabloTabularWidth(2) * s, one = DiabloTabularWidth(1) * s;
+            using (var p = DiabloTabular(day.ToString(), 1)) using (var m = new Matrix(s, 0, 0, s, x + (room - one) / 2, cy - cap / 2)) using (var b = new SolidBrush(col)) { p.Transform(m); g.FillPath(b, p); }
+            return room;
         }
-        // Diablo text in a slot of fixed width (the widest of `all`), centred in it: the month / weekday never move the neighbours.
+        // Panel text in a slot of fixed width (the widest of `all`), centred in it: the month / weekday never move the neighbours.
         static float Slot(Graphics g, string s, string[] all, float x, float cy, float cap, Color col)
         {
             float slot = 0; foreach (var a in all) slot = Math.Max(slot, DiabloLine(null, a, 0, 0, cap, col));
@@ -370,12 +371,29 @@ static partial class FanaticBar
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var g = e.Graphics; g.Clear(Color.Black); g.SmoothingMode = SmoothingMode.AntiAlias; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            e.Graphics.Clear(Color.Black);
+            using (var strip = new Bitmap(Math.Max(Width, 2400), Height))
+            using (var g = Graphics.FromImage(strip))
+            {
+            g.Clear(Color.Black); g.SmoothingMode = SmoothingMode.AntiAlias; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             zones.Clear();
             float u = Height / 66f, cy = Height / 2f, gap = 12 * u, inner = 6 * u;
-            // right-aligned in the room of the spacers (closer to the gear); the width is fixed (tabular cells, fixed slots)
-            float x = needWidth > 0 ? Math.Max(gap / 2, Width - needWidth + gap / 2) : gap / 2, start = x;
+            // First render natural widths, then justify the indivisible zones into the spacer room below.
+            float x = 0, start = x;
             var now = DateTime.Now;
+
+            // Weather owns the first big zone; a fixed sign cell avoids moving its neighbours on a temperature sign change.
+            float weatherStart = x, picture = 44 * u;
+            bool stale, weatherDay; int weatherCode; double? temperature;
+            lock (weatherStateLock) { stale = wOk == DateTime.MinValue || (DateTime.Now - wOk).TotalMinutes > 60; temperature = wTempVal; weatherCode = wCode; weatherDay = wDay; }
+            using (var icon = DrawWeatherSymbol((int)Math.Round(picture), weatherCode, stale, weatherDay)) g.DrawImage(icon, x, cy - picture / 2);
+            x += picture + inner;
+            Color tc = stale || !temperature.HasValue ? Muted : temperature.Value > 0 ? Warning : temperature.Value < 0 ? Light : TextCol;
+            if (temperature.HasValue && Math.Round(temperature.Value) < 0) using (var pen = RoundPen(tc, 2.5f * u)) g.DrawLine(pen, x, cy, x + 7 * u, cy);
+            x += 10 * u;
+            x += Digits(g, temperature.HasValue ? Math.Min(99, Math.Abs((int)Math.Round(temperature.Value))).ToString() : "--", x, cy, 22 * u, tc);
+            using (var pen = new Pen(tc, 1.8f * u)) g.DrawEllipse(pen, x + 2 * u, cy - 14 * u, 5 * u, 5 * u);
+            x += 9 * u; Zone(weatherStart, x, WeatherClick); x += gap;
 
             // 1) Wi-Fi fan (colour of the ping) + ping
             float x0 = x;
@@ -386,7 +404,7 @@ static partial class FanaticBar
             x += Digits(g, ms < 0 ? "--" : ms >= 100 ? "00" : ms.ToString(), x, cy, 15 * u, PingColour(ms));
             Zone(x0, x, NetClick); x += gap;
 
-            // 2) battery (case, segments, bolt) + percent in Diablo, coloured like the top lit segment
+            // 2) battery (case, segments, bolt) + percent in the panel font, coloured like the top lit segment
             if (bigBatShown >= 0)
             {
                 x0 = x; float bs = 44 * u, bw = bs * 22.5f / 30f;   // the square picture centres the 22.5 x 30 battery: shift it to start at x
@@ -395,6 +413,10 @@ static partial class FanaticBar
                 x += Digits(g, bigBatShown >= 100 ? "00" : bigBatShown.ToString(), x, cy, 22 * u, BatDigitColour(bigBatShown));
                 Zone(x0, x, PowerClick); x += gap;
             }
+
+            // Microphone immediately before the speaker, in the same panel coordinate system.
+            x0 = x; MicBody(g, x, cy, u, bigMicInUse, bigMicMuted); x += 34 * u;
+            Zone(x0, x, MicClick); x += gap;
 
             // 3) sound (Render-Audio): horn + three arcs lit by the volume, in speaker units = panel units; ink box x 5.7..59, y 12..52
             {
@@ -408,8 +430,8 @@ static partial class FanaticBar
 
             // 4) keyboard layout badge (layouts.py): frame rx 3, FRAME 2, muted, 36 high; the code in its colour, centred by ink
             {
-                // Diablo letters (layouts.py draws the code in the panel font); the frame a little wider than layouts.py (owner, batch 3)
-                x0 = x; float cap = 20.4f * u, s = cap / Diablo.CAP, widest = 0, tw;
+                // Panel letters (the OSD uses the same TextFont outlines); the frame a little wider than layouts.py (owner, batch 3)
+                x0 = x; float cap = 20.4f * u, s = cap / TextFont.CAP, widest = 0, tw;
                 foreach (var c in LangCodes) using (DiabloText(c, out tw)) widest = Math.Max(widest, tw * s);
                 float bw = widest + 2 * (12 + 2) * u, bh = 36 * u;
                 using (var p = RoundRectF(x + u, cy - bh / 2 + u, bw - 2 * u, bh - 2 * u, 3 * u)) using (var pen = new Pen(Muted, 2 * u)) g.DrawPath(pen, p);
@@ -421,11 +443,11 @@ static partial class FanaticBar
             // 5) date "ЖОВ 25 НД" (Render-Date): month in the season colour, day white (larger), weekday in the rainbow colour
             {
                 // whitebook dateicon.py 1:1 (owner 26.10): words at cap 20.4, day digits x1.25 (25.5), all three on ONE baseline,
-                // inner gaps exactly the panel gap measured between ink (no fixed-width slots: the block is as wide as today's date)
+                // Words use ink widths; the day reserves two full digit cells so 11 -> 12 never moves the weekday or clock.
                 x0 = x; int wi = ((int)now.DayOfWeek + 6) % 7; float dcap = 25.5f * u, wcap = dcap / 1.25f;
                 float wcy = cy + dcap / 2 - wcap / 2;   // a word whose bottom sits on the digits' baseline
                 x += DiabloLine(g, UaMonthAbbr[now.Month - 1].ToUpper(), x, wcy, wcap, SeasonColour(now.Month)) + gap;
-                x += DigitsInk(g, now.ToString("dd"), x, cy, dcap, Foreground) + gap;
+                x += DayDigits(g, now.Day, x, cy, dcap, Foreground) + gap;
                 x += DiabloLine(g, UaWeek[wi], x, wcy, wcap, WeekdayColour[wi]);
                 Zone(x0, x, CalClick); x += gap;
             }
@@ -443,11 +465,20 @@ static partial class FanaticBar
                 x += SegWidth("88:88") * s;
                 Zone(x0, x, ClockClick);
             }
-            // brightness on hover (owner, batch 4): every indicator but the one under the pointer at DimLevel. On the black strip a
-            // black wash of 1 - DimLevel is exactly the same as darker colours: no visible plate.
+            int need = (int)Math.Ceiling(x - start);
+            // Copy each natural zone into its justified position. Extra spacer room goes only BETWEEN zones;
+            // the same rectangles drive hover and clicks, so no invisible left slot or shifted hit target remains.
+            float extra = zones.Count > 1 ? Math.Max(0, Width - need) / (float)(zones.Count - 1) : 0;
             using (var veil = new SolidBrush(Color.FromArgb((int)Math.Round(255 * (1 - DimLevel)), 0, 0, 0)))
-                for (int i = 0; i < zones.Count; i++) if (i != hot) g.FillRectangle(veil, zones[i].Key);            int need = (int)Math.Ceiling(x - start + gap / 2);
-            if (need != needWidth) { needWidth = need; BeginInvoke(new Action(Place)); }
+                for (int i = 0; i < zones.Count; i++)
+                {
+                    var zone = zones[i]; var dest = zone.Key; dest.X += (int)Math.Round(i * extra);
+                    e.Graphics.DrawImage(strip, dest, zone.Key, GraphicsUnit.Pixel);
+                    if (i != hot) e.Graphics.FillRectangle(veil, dest);
+                    zones[i] = new KeyValuePair<Rectangle, Action<bool, Rectangle>>(dest, zone.Value);
+                }
+            if (need != needWidth) { needWidth = need; if (!preview && IsHandleCreated) BeginInvoke(new Action(Place)); }
+            }
         }
 
         // A child window passes an unhandled WM_CONTEXTMENU to its parent: the taskbar would open its own menu over ours.

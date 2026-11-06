@@ -61,14 +61,17 @@ static partial class FanaticBar
                     for (int j = 0; j < c.Items.Count; j++)
                     {
                         string exe = c.Exe[j];
-                        if (c.Items[j].pref == 2 || exe == null || !exe.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
-                        var x = c.Items[j]; x.pref = 2;
+                        bool systemMic = bigMode && exe != null && string.Equals(Path.GetFileName(exe), "explorer.exe", StringComparison.OrdinalIgnoreCase)
+                            && c.Items[j].guid == new Guid("7820ae82-23e3-4229-82c1-e41cb67d5b9c");
+                        uint preference = systemMic ? 0u : 2u;
+                        if (c.Items[j].pref == preference || exe == null || (!systemMic && !exe.StartsWith(root, StringComparison.OrdinalIgnoreCase))) continue;
+                        var x = c.Items[j]; x.pref = preference;
                         x.exePtr = Marshal.StringToCoTaskMemUni(exe); x.tipPtr = Marshal.StringToCoTaskMemUni(c.Tip[j] ?? "");
                         try { tn.SetPreference(ref x); n++; }
                         catch (ArgumentException) { }   // the icon went away since the listing
                         finally { Marshal.FreeCoTaskMem(x.exePtr); Marshal.FreeCoTaskMem(x.tipPtr); }
                     }
-                    if (n > 0) { Log("tray: promoted " + n + " icon(s) to always-show"); if (onChanged != null) onChanged(); }
+                    if (n > 0) { Log("tray: updated " + n + " own/microphone preference(s)"); if (onChanged != null) onChanged(); }
                 }
                 finally { Marshal.ReleaseComObject(tn); }
             }
