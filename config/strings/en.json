@@ -410,5 +410,26 @@
   "fan.no_data": "fan: no data",
   "fan.tip.no_data": "Fan: no data",
   "fan.switching": "Fan: switching to {0}",
-  "geo.unknown": "location unknown - press \"Update location\""
+  "geo.unknown": "location unknown - press \"Update location\"",
+
+  "_bar_devices": "Weather Wi-Fi location, GPU and microphone",
+  "weather.update_location_wifi": "Locate by Wi-Fi",
+  "slot.gpu": "GPU",
+  "tip.gpu": "GPU: {0}%",
+  "menu.mic.input_settings": "Sound input settings",
+  "menu.mic.privacy": "Microphone privacy",
+  "geo.wifi_permission": "No usable Wi-Fi BSSIDs (or access denied). On Windows 11, turn on Settings → Privacy & security → Location → Let desktop apps access your location. Check that Wi-Fi is on. No settings were changed.",
+  "geo.wifi_no_fix": "Wi-Fi location unavailable. Try again later.",
+  "geo.wlan_error": "Wi-Fi scan error: {0}",
+  "geo.bad_bssid": "Invalid BSSID. Use aa:bb:cc:dd:ee:ff.",
+  "geo.bssid_count": "BSSID count: {0}",
+  "geo.apple_wire": "apple: request {0} bytes; response {1} bytes",
+  "geo.source_error": "{0}: {1}",
+  "geo.fix": "Source: {0}; lat={1}; lon={2}; accuracy={3} m; place={4}",
+  "geo.saved": "Saved: {0}",
+  "geo.decoded": "BSSID: {0}; lat={1}; lon={2}; accuracy={3} m",
+  "geo.beacon_request": "beacondb request: {0}",
+  "geo.beacon_test_ok": "BeaconDB request/response fixture: PASS",
+  "probe.gpu": "GPU: {0}% (poll {1} ms)",
+  "geo.invalid_response": "Invalid response from the location service."
 }

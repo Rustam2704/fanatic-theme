@@ -10,10 +10,67 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 static partial class FanaticBar
 {
     const int ERender = 0, ECapture = 1;
+    static volatile bool bigMicInUse, bigMicMuted;
+    static bool MicActive(RegistryKey key)
+    {
+        if (key == null) return false;
+        long start = Convert.ToInt64(key.GetValue("LastUsedTimeStart", 0L)), stop = Convert.ToInt64(key.GetValue("LastUsedTimeStop", 0L));
+        return start > 0 && stop == 0;
+    }
+    static bool MicInUse()
+    {
+        try
+        {
+            using (var root = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"))
+            {
+                if (root == null) return false;
+                foreach (string name in root.GetSubKeyNames()) using (var key = root.OpenSubKey(name))
+                {
+                    if (MicActive(key)) return true;
+                    if (name == "NonPackaged" && key != null) foreach (string app in key.GetSubKeyNames()) using (var child = key.OpenSubKey(app)) if (MicActive(child)) return true;
+                }
+            }
+        }
+        catch (Exception ex) { Log("mic activity: " + ex.Message); }
+        return false;
+    }
+    static void PollMic()
+    {
+        bool muted = false; WithEndpoint(ECapture, ep => { ep.GetMute(out muted); });
+        bool active = MicInUse();
+        if (active != bigMicInUse || muted != bigMicMuted) { bigMicInUse = active; bigMicMuted = muted; BigChanged(); }
+    }
+    static void MicClick(bool right, Rectangle box)
+    {
+        if (!right)
+        {
+            ThreadPool.QueueUserWorkItem(_ => { WithEndpoint(ECapture, ep => { bool mute; if (ep.GetMute(out mute) == 0) { Guid id = Guid.Empty; ep.SetMute(!mute, ref id); } }); PollMic(); });
+            return;
+        }
+        MenuAt(box, Item(Strings.T("menu.mic.input_settings"), "", () => Open("ms-settings:sound")),
+            Item(Strings.T("menu.mic.privacy"), "", () => Open("ms-settings:privacy-microphone")));
+    }
+    // Same rounded strokes and 40-unit ink height as the speaker, without a font-dependent microphone glyph.
+    static void MicBody(Graphics g, float x, float cy, float u, bool active, bool muted)
+    {
+        Color col = active ? Danger : Light;
+        using (var pen = RoundPen(col, 3 * u))
+        using (var capsule = RoundRectF(x + 10 * u, cy - 20 * u, 14 * u, 27 * u, 7 * u))
+        {
+            g.DrawPath(pen, capsule);
+            g.DrawArc(pen, x + 4 * u, cy - 12 * u, 26 * u, 27 * u, 0, 180);
+            g.DrawLine(pen, x + 4 * u, cy - 12 * u, x + 4 * u, cy + 1.5f * u);
+            g.DrawLine(pen, x + 30 * u, cy - 12 * u, x + 30 * u, cy + 1.5f * u);
+            g.DrawLine(pen, x + 17 * u, cy + 15 * u, x + 17 * u, cy + 20 * u);
+            g.DrawLine(pen, x + 9 * u, cy + 20 * u, x + 25 * u, cy + 20 * u);
+            if (muted) { using (var erase = RoundPen(Background, 7 * u)) g.DrawLine(erase, x + 2 * u, cy + 19 * u, x + 32 * u, cy - 19 * u); g.DrawLine(pen, x + 2 * u, cy + 19 * u, x + 32 * u, cy - 19 * u); }
+        }
+    }
     sealed class AudioDev { public string Id, Name; }
 
     // One enumerator per thread (COM objects stay in the apartment that made them; pool threads are reused, so it is made rarely).

@@ -62,9 +62,13 @@ static partial class FanaticBar
     static WebClient GeoClient()
     {
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-        var wc = new WebClient { Encoding = System.Text.Encoding.UTF8 };
-        wc.Headers[HttpRequestHeader.UserAgent] = "fanatic-bar";
+        var wc = new GeoWebClient { Encoding = System.Text.Encoding.UTF8 };
+        wc.Headers[HttpRequestHeader.UserAgent] = "fanatic-theme/1.0";
         return wc;
+    }
+    sealed class GeoWebClient : WebClient
+    {
+        protected override WebRequest GetWebRequest(Uri address) { var r = base.GetWebRequest(address); r.Timeout = 15000; var h = r as HttpWebRequest; if (h != null) h.ReadWriteTimeout = 15000; return r; }
     }
 
     // Resolve the approximate location from the IP (no key, no Location permission). Returns true on success.
@@ -113,6 +117,8 @@ static partial class FanaticBar
         double a, o; double.TryParse(la, NumberStyles.Float, Inv, out a); double.TryParse(lo, NumberStyles.Float, Inv, out o);
         lock (geoLock) { geoLat = a; geoLon = o; geoPlace = city ?? ""; geoTz = string.IsNullOrEmpty(tz) ? "auto" : tz; }
         SaveLocation();
+        // A diagnostic --geo/--geo-wifi process can update an already-running bar without restarting it.
+        try { System.Threading.EventWaitHandle ev; if (System.Threading.EventWaitHandle.TryOpenExisting("fanatic.Bar.WeatherRefresh", out ev)) using (ev) ev.Set(); } catch { }
         // the sky re-projects the stars for the new place (its reload forces a full refresh)
         try { System.Threading.EventWaitHandle ev; if (System.Threading.EventWaitHandle.TryOpenExisting("fanatic.SkyStars.Reload", out ev)) using (ev) ev.Set(); } catch { }
     }

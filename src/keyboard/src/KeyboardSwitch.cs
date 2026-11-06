@@ -1,7 +1,7 @@
 ﻿// Source is UTF-8 with BOM (Cyrillic menu text); build with csc /codepage:65001.
 // Keyboard language switcher for fanatic.
 //   Alt+Shift  : Ukrainian <-> last used of Russian/English
-//   Ctrl+Shift : Russian <-> English (from Ukrainian: to the other of RU/EN than last used)
+//   Ctrl+Shift : Russian <-> English (from Ukrainian: to last used RU/EN)
 // Tray icon shows UA / RU / EN. Runs elevated (scheduled task) so it can switch layouts in
 // admin windows too. Windows' own Alt+Shift / Ctrl+Shift hotkeys must be disabled.
 // A small non-activating OSD shows the new layout code after each switch.
@@ -118,7 +118,7 @@ sealed class Touchpad : NativeWindow
     }
 }
 
-static class KeyboardSwitch
+static partial class KeyboardSwitch
 {
     static bool EverythingTaskExists()
     {
@@ -197,8 +197,8 @@ static class KeyboardSwitch
         if (code >= 0)
         {
             int msg = (int)wParam;
-            if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_XBUTTONDOWN || msg == WM_MOUSEWHEEL)
-                if (held.Count > 0) dirty = true;
+            if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_XBUTTONDOWN || msg == WM_MOUSEWHEEL || msg == 0x20E /*horizontal wheel*/)
+                chord.Interrupt();
             bool injected = (Marshal.ReadInt32(lParam, 12) & 1) != 0;   // MSLLHOOKSTRUCT.flags & LLMHF_INJECTED
             // Touchpad, two fingers: Windows reports both a TAP and a physical PRESS (click) as a right click.
             // Owner's wish: tap = right click, press = middle click. The right click is held back for 40 ms so the raw
@@ -239,8 +239,8 @@ static class KeyboardSwitch
         }
         return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
     }
-    static readonly HashSet<int> held = new HashSet<int>();
-    static bool dirty, fired;
+    static readonly PureChord chord = new PureChord();
+    static readonly HashSet<int> held = chord.Keys;
     static int lastLatin = 2;               // EN
     static int shown = -1;
     static NotifyIcon tray;
@@ -282,85 +282,73 @@ static class KeyboardSwitch
         try { return new FontFamily(name); } catch { return new FontFamily("Segoe UI"); }
     }
 
-    // Small borderless, topmost, non-activating popup (never takes focus, click-through).
-    class Osd : Form
+    // Borderless, topmost, non-activating and click-through, with the exact badge geometry.
+    sealed class Osd : Form
     {
-        string text = ""; Color color = Color.White; Font font; Region rgn; static FontFamily fam;
+        int index; float unit;
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         public Osd()
         {
+            AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual;
-            BackColor = Color.FromArgb(32, 32, 32); Opacity = 0.9; TopMost = true; DoubleBuffered = true;
+            BackColor = Color.Black; TopMost = true; DoubleBuffered = true;
             timer.Tick += (s, e) => { timer.Stop(); Hide(); };
         }
         protected override CreateParams CreateParams
         {
-            get { var cp = base.CreateParams; cp.ExStyle |= 0x08000000 | 0x80 | 0x8 | 0x20 | 0x80000; return cp; }
+            get { var cp = base.CreateParams; cp.ExStyle |= 0x08000000 | 0x80 | 0x8; /* opaque, not layered: a layered window without alpha attributes is not drawn / shows through */ return cp; }
         }
         protected override bool ShowWithoutActivation { get { return true; } }
-        public void ShowText(string t, Color c, int lw, int lh, int fontPx, int ms)
+        protected override void WndProc(ref Message m)
         {
-            double sc = GetDpiForSystem() / 96.0;
-            int w = (int)(lw * sc), h = (int)(lh * sc);
-            text = t; color = c;
-            if (fam == null) fam = MakeFamily("Bahnschrift SemiBold");
-            if (font != null) font.Dispose();
-            font = new Font(fam, (float)(fontPx * sc), FontStyle.Regular, GraphicsUnit.Pixel);
-            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-            Bounds = new Rectangle(wa.Left + (wa.Width - w) / 2, wa.Bottom - (int)(wa.Height * 0.15) - h, w, h);
-            int d = (int)(2 * 14 * sc);
-            using (var gp = new GraphicsPath())
-            {
-                gp.AddArc(0, 0, d, d, 180, 90); gp.AddArc(w - d, 0, d, d, 270, 90);
-                gp.AddArc(w - d, h - d, d, d, 0, 90); gp.AddArc(0, h - d, d, d, 90, 90); gp.CloseFigure();
-                var old = rgn; rgn = new Region(gp); Region = rgn; if (old != null) old.Dispose();
-            }
-            if (!Visible) { Opacity = 0; Show(); Update(); Opacity = 0.9; }   // paint while transparent: no white first frame
-            else Invalidate();
-            SetWindowPos(Handle, (IntPtr)(-1), 0, 0, 0, 0, 0x2 | 0x1 | 0x10);   // topmost, NOMOVE|NOSIZE|NOACTIVATE
-            timer.Stop(); timer.Interval = ms; timer.Start();
+            if (m.Msg == 0x84 /*WM_NCHITTEST*/) { m.Result = (IntPtr)(-1); return; }
+            if (m.Msg == 0x21 /*WM_MOUSEACTIVATE*/) { m.Result = (IntPtr)3; return; }
+            base.WndProc(ref m);
         }
-        protected override void OnPaint(PaintEventArgs e)
+        public void ShowBadge(int idx, IntPtr app)
         {
-            // Center the glyphs' real ink box (DrawString centering includes font leading, so text sat off-center).
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            // Winding fill: Bahnschrift is a variable font whose glyph contours overlap; the default Alternate fill punched holes into them.
-            using (var path = new GraphicsPath(FillMode.Winding))
-            using (var b = new SolidBrush(color))
+            index = idx; unit = 1.3f * MonitorDpi(app) / 96f;   // 1.3x the taskbar badge (owner)
+            Size size = BadgeGraphics.Size(unit);
+            Rectangle screen = Screen.FromHandle(app).Bounds;
+            Bounds = new Rectangle(screen.Left + (screen.Width - size.Width) / 2, screen.Top + (screen.Height - size.Height) / 2, size.Width, size.Height);
+            using (var path = RoundRect(0, 0, size.Width, size.Height, 3 * unit))
             {
-                path.AddString(text, font.FontFamily, (int)font.Style, font.Size, PointF.Empty, StringFormat.GenericTypographic);
-                RectangleF r = path.GetBounds();
-                using (var m = new Matrix())
-                {
-                    m.Translate(ClientSize.Width / 2f - (r.X + r.Width / 2f), ClientSize.Height / 2f - (r.Y + r.Height / 2f));
-                    path.Transform(m);
-                }
-                e.Graphics.FillPath(b, path);
+                Region old = Region; Region = new Region(path); if (old != null) old.Dispose();
             }
+            // never exactly 1.0: WinForms then drops the layered attributes, and a WS_EX_LAYERED window (CreateParams) is not drawn at all
+            if (!Visible) { Opacity = 0.9; Show(); Update(); }   // 0.9 like the bar's popups (owner); WinForms sets the layered alpha itself
+            else { Invalidate(); Update(); }
+            SetWindowPos(Handle, (IntPtr)(-1), 0, 0, 0, 0, 0x2 | 0x1 | 0x10);
+            timer.Stop(); timer.Interval = 700; timer.Start();
         }
+        protected override void OnPaint(PaintEventArgs e) { e.Graphics.Clear(Color.Black); BadgeGraphics.Draw(e.Graphics, Codes[index], Colors[index], unit); }
+        protected override void Dispose(bool disposing) { if (disposing) timer.Dispose(); base.Dispose(disposing); }
     }
 
-    static void ShowOsd(int idx)
+    static void ShowOsd(int idx, IntPtr app)
     {
-        try { if (osd == null) osd = new Osd(); osd.ShowText(Codes[idx], Colors[idx], 120, 80, 30, 700); } catch (Exception ex) { Log("osd: " + ex.Message); }
+        try { if (osd == null) osd = new Osd(); osd.ShowBadge(idx, app); } catch (Exception ex) { Log("osd: " + ex.Message); }
     }
 
     [STAThread]
-    static void Main()
+    static int Main(string[] args)
     {
+        PerMonitorDpi();
+        if (args.Length > 0) return CommandLine(args);
         Strings.Load(Strings.ResolveLang("en"));   // same shared language as the bar and the sky
         bool created;
         using (var mutex = new Mutex(true, "fanatic.KeyboardSwitch", out created))
         {
-            if (!created) return;
-            PerMonitorDpi();
+            if (!created) return 0;
             Application.EnableVisualStyles();
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (s, e) => Log("ThreadException: " + e.Exception);
             ui = new WindowsFormsSynchronizationContext();
             SynchronizationContext.SetSynchronizationContext(ui);
 
-            for (int i = 0; i < 3; i++) Hkl[i] = LoadKeyboardLayout(Klids[i], 0);
+            ResolveLayouts();
+            try { StartRuntime(); }
+            catch (Exception ex) { Log("layout runtime: " + ex); StopRuntime(); return 1; }
             MakeIcons();
             iconSize = TrayIconSize();
             var dpiTimer = new System.Windows.Forms.Timer { Interval = 2000 };   // display scale changed: new icons at the new size, no restart
@@ -395,17 +383,17 @@ static class KeyboardSwitch
             menu.Items.Add(Strings.T("menu.exit"), null, (s, e) => Application.Exit());
             // The current language is bold (a check mark would be drawn over its colour dot).
             var boldFont = new Font(menu.Font, FontStyle.Bold);
-            menu.Opening += (s, e) => { for (int i = 0; i < 3; i++) langItems[i].Font = i == shown ? boldFont : menu.Font; };
+            menu.Opening += (s, e) => { ResolveLayouts(); int current = Current(AppTarget()); for (int i = 0; i < 3; i++) langItems[i].Font = i == current ? boldFont : menu.Font; };
             // The tooltip would cover the open menu: blank it while the menu is shown.
             menu.Opened += (s, e) => { menuOpen = true; tray.Text = ""; };
             menu.Closed += (s, e) => { menuOpen = false; tray.Text = lastText; };
             tray.ContextMenuStrip = menu;
             // left click: the next layout in a full cycle UA -> RU -> EN -> UA (owner 26.10); right click: the menu
-            tray.MouseClick += (s, e) => { if (e.Button != MouseButtons.Left) return; int cur = Current(); if (cur < 0) cur = shown; SwitchFromMenu((cur + 1) % 3); };
+            tray.MouseClick += (s, e) => { if (e.Button != MouseButtons.Left) return; PerformAction(LayoutPlan.Cycle, AppTarget()); };
 
             hookProc = Hook;
             mouseProc = MouseHook;
-            if (!InstallHooks()) { Log("keyboard hook failed, exiting"); tray.Visible = false; return; }
+            if (!InstallHooks()) { Log("keyboard hook failed, exiting"); tray.Visible = false; StopRuntime(); return 1; }
 
             // the Claude-console detection runs on its own thread: the hooks only read its result
             var scan = new Thread(ScanLoop) { IsBackground = true, Name = "claude-scan" }; scan.Start();
@@ -415,7 +403,8 @@ static class KeyboardSwitch
             var timer = new System.Windows.Forms.Timer { Interval = 150 };
             timer.Tick += (s, e) =>
             {
-                RememberApp(); UpdateIcon(Current());
+                chord.Reconcile(k => (GetAsyncKeyState(k) & 0x8000) != 0);
+                RememberApp(); UpdateIcon(Current(AppTarget()));
                 var fg = GetForegroundWindow(); if (fg != lastFgSeen) { lastFgSeen = fg; scanKick.Set(); }   // a new window: rescan at once
                 if (hot && !PointerOnIcon()) { hot = false; RedrawIcon(); }
             };
@@ -431,7 +420,8 @@ static class KeyboardSwitch
             {
                 if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionUnlock) ui.Post(_ => { if (!InstallHooks()) Log("hook reinstall failed (unlock)"); }, null);
             };
-            int cur0 = Current();
+            RememberApp();
+            int cur0 = Current(AppTarget());
             UpdateIcon(cur0 < 0 ? 0 : cur0);
 
             // Ctrl+Alt+F opens an Everything search window (Everything's own hotkey does not register here). Optional: only
@@ -447,8 +437,12 @@ static class KeyboardSwitch
 
             Application.Run();
             GC.KeepAlive(timer); GC.KeepAlive(hookTimer); GC.KeepAlive(hotkeys); GC.KeepAlive(touchpad);   // locals must live as long as the loop
-            tray.Visible = false;
+            StopRuntime();
+            UnhookWindowsHookEx(kbHook); UnhookWindowsHookEx(msHook);
+            if (osd != null) osd.Dispose();
+            tray.Dispose();
         }
+        return 0;
     }
 
     // The layout badge of the whitebook panel (icons-src\layouts.py panel_markup): the code in its colour, centred by its ink,
@@ -515,7 +509,7 @@ static class KeyboardSwitch
     static void UpdateIcon(int idx)
     {
         if (idx < 0) return;                // unknown (e.g. desktop / lock screen): keep the current icon
-        if (idx != 0) lastLatin = idx;
+        if (idx > 0) lastLatin = idx;
         if (idx == shown && hot == shownHot) return;
         shown = idx; shownHot = hot;
         tray.Icon = (hot ? icons : dimIcons)[idx];
@@ -523,67 +517,27 @@ static class KeyboardSwitch
         if (!menuOpen) tray.Text = lastText;
     }
 
-    static uint ForegroundThread(out IntPtr target)
-    {
-        IntPtr fg = GetForegroundWindow();
-        uint tid = GetWindowThreadProcessId(fg, IntPtr.Zero);
-        var gi = new GUITHREADINFO { cbSize = Marshal.SizeOf(typeof(GUITHREADINFO)) };
-        target = (GetGUIThreadInfo(tid, ref gi) && gi.hwndFocus != IntPtr.Zero) ? gi.hwndFocus : fg;
-        return tid;
-    }
-
-    // Index of the foreground window's layout, or -1 if it can't be determined.
-    static int Current()
-    {
-        IntPtr target;
-        uint tid = ForegroundThread(out target);
-        long hkl = (long)GetKeyboardLayout(tid);
-        if (hkl == 0)
-        {
-            // Console windows report the client (cmd) thread, which has no layout; the IME window
-            // belongs to the real input thread (conhost / terminal host).
-            IntPtr ime = ImmGetDefaultIMEWnd(GetForegroundWindow());
-            if (ime != IntPtr.Zero) hkl = (long)GetKeyboardLayout(GetWindowThreadProcessId(ime, IntPtr.Zero));
-        }
-        ushort lang = (ushort)(hkl & 0xFFFF);
-        for (int i = 0; i < 3; i++) if (LangIds[i] == lang) return i;
-        return -1;
-    }
-
-    static void Switch(int idx)
-    {
-        IntPtr target;
-        ForegroundThread(out target);
-        IntPtr fg = GetForegroundWindow();
-        PostMessage(target, WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, Hkl[idx]);
-        if (target != fg) PostMessage(fg, WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, Hkl[idx]);
-        if (idx != 0) lastLatin = idx;
-        UpdateIcon(idx);
-        ShowOsd(idx);
-    }
-
     // The window the user was typing in before clicking the tray (the menu itself / the taskbar don't count).
     static IntPtr lastApp = IntPtr.Zero;
-    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
     static void RememberApp()
     {
-        IntPtr fg = GetForegroundWindow(); if (fg == IntPtr.Zero) return;
+        RememberApp(GetForegroundWindow());
+    }
+    static void RememberApp(IntPtr fg)
+    {
+        if (fg == IntPtr.Zero || !IsWindow(fg)) return;
         uint pid; GetWindowThreadProcessId(fg, out pid);
         if (pid == (uint)Process.GetCurrentProcess().Id) return;
         var cls = new System.Text.StringBuilder(64); GetClassName(fg, cls, 64);
         string c = cls.ToString();
-        if (c == "Shell_TrayWnd" || c == "NotifyIconOverflowWindow" || c == "TopLevelWindowForOverflowXamlIsland" || c == "Progman" || c == "WorkerW") return;
+        if (c == "Shell_SecondaryTrayWnd" || c == "CiceroUIWndFrame" || c == "#32768" || c == "Shell_TrayWnd" || c == "NotifyIconOverflowWindow" || c == "TopLevelWindowForOverflowXamlIsland" || c == "Progman" || c == "WorkerW") return;
         lastApp = fg;
     }
 
     static void SwitchFromMenu(int idx)
     {
-        // Give the focus back to that window first: the layout change goes to the foreground window.
-        if (lastApp != IntPtr.Zero && IsWindow(lastApp)) SetForegroundWindow(lastApp);
-        var t = new System.Windows.Forms.Timer { Interval = 120 };
-        t.Tick += (s, e) => { t.Stop(); t.Dispose(); Switch(idx); };
-        t.Start();
+        Switch(idx, AppTarget());
     }
 
     // Settings pages through explorer.exe, so they open un-elevated like from the Windows indicator.
@@ -604,13 +558,6 @@ static class KeyboardSwitch
         { g.SmoothingMode = SmoothingMode.AntiAlias; g.FillEllipse(b, 3, 3, 10, 10); }
         return bmp;
     }
-
-    static void AltShift() { int cur = Current(); if (cur < 0) cur = shown; Switch(cur == 0 ? lastLatin : 0); }
-    static void CtrlShift() { int cur = Current(); if (cur < 0) cur = shown; int basis = cur == 0 ? lastLatin : cur; Switch(basis == 1 ? 2 : 1); }
-
-    static bool IsShift(int vk) { return vk == VK_LSHIFT || vk == VK_RSHIFT; }
-    static bool IsCtrl(int vk) { return vk == VK_LCONTROL || vk == VK_RCONTROL; }
-    static bool IsAlt(int vk) { return vk == VK_LMENU || vk == VK_RMENU; }
 
     // ---- Claude Code in a classic console: conhost cannot tell Shift+Enter from Enter, and an image in the
     // clipboard is pasted with Alt+V there. So in a console window that runs claude.exe:
@@ -751,29 +698,17 @@ static class KeyboardSwitch
             {
                 int msg = (int)wParam, vk = k.vkCode;
                 bool down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN, up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
-                try { if (ClaudeKeys(vk, down, up)) return (IntPtr)1; } catch (Exception ex) { Log("claude keys: " + ex.Message); }
-                bool mod = IsShift(vk) || IsCtrl(vk) || IsAlt(vk);
-                if (down)
+                // Update purity before a remapper can swallow the non-modifier key.
+                if (down || up)
                 {
-                    // Drop modifiers whose key-up we never saw (e.g. lost across Win+L / UAC).
-                    held.RemoveWhere(h => h != vk && (GetAsyncKeyState(h) & 0x8000) == 0);
-                    if (held.Count == 0) { dirty = false; fired = false; }
-                    if (!mod) { if (held.Count > 0) dirty = true; }   // another key joined: not a pure chord
-                    else held.Add(vk);
-                }
-                else if (up)
-                {
-                    if (mod && !dirty && !fired && held.Count == 2)
+                    int action = chord.Key(vk, down, MouseButtonsDown());
+                    if (action != 0)
                     {
-                        bool shift = false, ctrl = false, alt = false;
-                        foreach (int h in held) { shift |= IsShift(h); ctrl |= IsCtrl(h); alt |= IsAlt(h); }
-                        // Right Alt is AltGr on Ukrainian - only Left Alt counts.
-                        if (shift && alt && held.Contains(VK_LMENU)) { fired = true; ui.Post(_ => AltShift(), null); }
-                        else if (shift && ctrl) { fired = true; ui.Post(_ => CtrlShift(), null); }
+                        IntPtr app = GetForegroundWindow();
+                        ui.Post(_ => PerformAction(action, app), null);
                     }
-                    held.Remove(vk);
-                    if (held.Count == 0) { dirty = false; fired = false; }
                 }
+                try { if (ClaudeKeys(vk, down, up)) return (IntPtr)1; } catch (Exception ex) { Log("claude keys: " + ex.Message); }
             }
         }
         return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);

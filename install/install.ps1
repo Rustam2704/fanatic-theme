@@ -59,13 +59,21 @@ Note "switch later in the sky settings (right-click the desktop) - it changes th
 
 # ---------------------------------------------------------------- 3. registry: look of Windows, taskbar, desktop
 Step '3. Registry (visual settings only)'
-foreach ($r in 'theme-dark-transparency', 'dwm-accent', 'accent-palette', 'explorer-advanced', 'explorerpatcher',
-               'taskbar-hide-system-icons', 'langbar-hidden', 'desktop-black') {
-  RegImport "$Pack\registry\$r.reg"; Note "$r.reg"
-}
-# Windows' own input indicator (UKR / ENG by the clock) duplicates the bar's UA / RU / EN: switch to the legacy
-# language bar, which langbar-hidden.reg keeps hidden - the indicator disappears at once (Viksa 26.10)
-Set-WinLanguageBarOption -UseLegacyLanguageBar; Note 'Windows input indicator hidden (the bar shows the layout)'
+# Through a one-shot scheduled task, never directly: when this installer runs from a terminal inside a packaged (MSIX) app,
+# even elevated, every HKCU / HKLM / %LOCALAPPDATA% write lands in the package's private copy and the real Explorer never
+# sees it (native clock, volume, power, network icons and Pen came back after an Explorer restart; 06.11).
+$me   = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$once = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+$settingsLog = Join-Path $Root 'apply-settings.log'
+$arg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Pack\install\apply-user-settings.ps1`" -Pack `"$Pack`" -Root `"$Root`" -Language $Language -Log `"$settingsLog`"" + $(if (-not $NoLockScreen) { ' -LockScreen' } else { '' })
+Register-ScheduledTask -TaskName 'fanatic-settings-once' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arg) `
+  -Principal (New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Highest) -Settings $once -Force | Out-Null
+Start-ScheduledTask -TaskName 'fanatic-settings-once'; Start-Sleep 1
+for ($i = 0; $i -lt 90 -and (Get-ScheduledTask -TaskName 'fanatic-settings-once').State -in 'Running', 'Queued'; $i++) { Start-Sleep 1 }
+Unregister-ScheduledTask -TaskName 'fanatic-settings-once' -Confirm:$false
+$res = if (Test-Path $settingsLog) { Get-Content $settingsLog } else { @('FAILED: no log') }
+$res | ForEach-Object { Note $_ }
+if (-not ($res -contains 'OK')) { throw "user settings were not applied (see $settingsLog)" }
 # black desktop NOW (the .reg alone needs a re-login; without black the old wallpaper shows through the sky)
 Add-Type 'using System; using System.Runtime.InteropServices; public class FanDesk {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool SystemParametersInfo(uint a, uint p, string v, uint f);
@@ -73,25 +81,7 @@ Add-Type 'using System; using System.Runtime.InteropServices; public class FanDe
 [FanDesk]::SystemParametersInfo(20, 0, '', 3) | Out-Null                    # SPI_SETDESKWALLPAPER: no picture
 [FanDesk]::SetSysColors(1, @(1), @(0)) | Out-Null                          # COLOR_DESKTOP = black
 Note 'desktop background: black, applied now'
-if (-not $NoLockScreen) {
-  New-Item -ItemType Directory -Force 'C:\ProgramData\fanatic' | Out-Null
-  Copy-Item "$Pack\assets\lockscreen\lockscreen-sky.png" 'C:\ProgramData\fanatic\' -Force
-  RegImport "$Pack\registry\lockscreen-sky.reg"
-  Note 'lock screen: the sky (C:\ProgramData\fanatic\lockscreen-sky.png)'
-}
-# desktop right-click "Sky..." -> sky settings (label in the chosen language, path of this install)
 $label = (Get-Content "$Pack\config\strings\$Language.json" -Raw -Encoding UTF8 | ConvertFrom-Json).'sky.ctxmenu'
-$sky = Join-Path $Root 'sky-stars\sky-stars.exe'
-$k = 'HKCU:\Software\Classes\DesktopBackground\Shell\SkyStars'
-New-Item -Path "$k\command" -Force | Out-Null
-Set-ItemProperty $k -Name MUIVerb -Value $label; Set-ItemProperty $k -Name Icon -Value $sky; Set-ItemProperty $k -Name Position -Value Bottom
-Set-Item "$k\command" -Value "`"$sky`" --settings"
-Note "desktop context menu entry: $label"
-
-# keyboard-switch owns Alt+Shift / Ctrl+Shift: Windows' own layout hotkeys must be OFF or every switch happens twice
-$tg = 'HKCU:\Keyboard Layout\Toggle'; New-Item $tg -Force | Out-Null
-foreach ($v in 'Hotkey', 'Language Hotkey', 'Layout Hotkey') { Set-ItemProperty $tg -Name $v -Value '3' }
-Note "Windows' own Alt+Shift / Ctrl+Shift layout hotkeys: off (keyboard-switch handles them)"
 if (-not $SkipLayouts) {   # keyboard-switch cycles Ukrainian / Russian / English: add the missing ones, never remove any
   $ll = Get-WinUserLanguageList; $have = @($ll | ForEach-Object LanguageTag)
   $add = @('uk', 'ru', 'en-US') | Where-Object { $have -notcontains $_ }
@@ -140,27 +130,32 @@ if ($MsiFan) {
   foreach ($n in 'msi-fan-eco', 'msi-fan-balanced', 'msi-fan-performance') { $svc.GetFolder('\').GetTask($n).SetSecurityDescriptor($sd, 0) }
 } else { Note 'fan-tray / msi-fan: skipped (MSI EC only; add -MsiFan on such a laptop)' }
 
-# ---------------------------------------------------------------- 5. restart Explorer cleanly, start everything
-Step '5. Restart Explorer (clean) and start the programs'
-& (Join-Path $Root 'restart-explorer.ps1') -Root $Root
-foreach ($t in 'keyboard-switch', 'fan-tray') { Start-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
-
-# ---------------------------------------------------------------- 6. tray: our icons stay, everything else folds into ^
 # Run an action once in the user's session, un-elevated, and wait for it (Explorer's tray object and WinRT
 # per-user settings refuse an elevated caller)
 function RunAsUserOnce($name, $action) {
   Register-ScheduledTask -TaskName $name -Action $action -Principal (New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited) -Settings $once -Force | Out-Null
   Start-ScheduledTask -TaskName $name; Start-Sleep 1
-  for ($i = 0; $i -lt 60 -and (Get-ScheduledTask -TaskName $name).State -in 'Running', 'Queued'; $i++) { Start-Sleep 1 }
+  for ($i = 0; $i -lt 90 -and (Get-ScheduledTask -TaskName $name).State -in 'Running', 'Queued'; $i++) { Start-Sleep 1 }
   Unregister-ScheduledTask -TaskName $name -Confirm:$false
 }
+
+# ---------------------------------------------------------------- 5. restart Explorer cleanly, start everything
+# un-elevated: an Explorer started from this elevated script came up without the fresh HideClock / HideSCA* policies
+# (native clock, volume, power, network icons stayed next to the bar) and the bar's spacers did not get their room
+Step '5. Restart Explorer (clean, as the user) and start the programs'
+RunAsUserOnce 'fanatic-explorer-once' (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $Root 'restart-explorer.ps1')`" -Root `"$Root`"")
+foreach ($t in 'keyboard-switch', 'fan-tray') { Start-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
+
+# ---------------------------------------------------------------- 6. tray: our icons stay, everything else folds into ^
 Step '6. Tray: keep our icons on the taskbar, fold the rest into ^'
 Start-Sleep 10   # Windows accepts the preference only for an icon it has already seen
 $tp = Join-Path $Root 'tray-prefs\tray-prefs.exe'
 $ours = @('fanatic-bar.exe', 'keyboard-switch.exe') + $(if ($MsiFan) { 'fan-tray.exe' } else { @() })
 # tray-prefs talks to Explorer's tray COM object, which an ELEVATED process cannot reach (REGDB_E_CLASSNOTREG): run it
 # un-elevated in the user's session through a one-shot task
-$cmd = "& '$tp' set 2 $($ours -join ' '); & '$tp' autotray on"
+# setids: the bar's spacer ids 7201..7230 are "always show" before Windows ever sees them (a new id lands in ^ and the
+# big bar then had no room - 48 px wide - until a manual tray-prefs run, 06.11)
+$cmd = "& '$tp' set 2 $($ours -join ' '); & '$tp' setids 2 fanatic-bar.exe 7201 7230; & '$tp' autotray on"
 $ta = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -Command $cmd"
 RunAsUserOnce 'fanatic-tray-once' $ta
 Note "tray: $($ours -join ', ') kept on the taskbar, the rest folds into ^"
