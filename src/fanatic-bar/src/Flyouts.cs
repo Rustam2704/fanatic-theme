@@ -293,7 +293,7 @@ static partial class FanaticBar
             var all = new GraphicsPath(FillMode.Winding); float pen = -Glyphs.Dseg7XMin;
             foreach (char c in text)
             {
-                if (hide.IndexOf(c) < 0)
+                if (c != ' ' && hide.IndexOf(c) < 0)
                     using (var p = Svg(c == ':' ? Glyphs.Dseg7Colon : Glyphs.Dseg7[c - '0'])) using (var m = new Matrix(1, 0, 0, -1, pen, 1000)) { p.Transform(m); all.AddPath(p, false); }
                 pen += Adv(c);
             }
@@ -303,7 +303,7 @@ static partial class FanaticBar
         {
             var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             var now = DateTime.Now; float s = (Height - 2) / 1000f;
-            using (var ghost = Paths("88:88:88", "")) using (var lit = Paths(now.ToString("HH:mm:ss"), now.Second % 2 == 0 ? "" : ":"))
+            using (var ghost = Paths("88:88:88", "")) using (var lit = Paths(Clock12(now, true), now.Second % 2 == 0 ? "" : ":"))
             using (var m = new Matrix(s, 0, 0, s, 1 + (Width - 2 - InkWidth() * s) / 2, 1))
             {
                 ghost.Transform(m); lit.Transform(m);

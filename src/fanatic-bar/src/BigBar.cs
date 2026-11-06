@@ -658,10 +658,10 @@ static partial class FanaticBar
                 Zone(x0, x, CalClick); x += Gap(6 * u, scale);
             }
 
-            // 6) clock (clockface.py): DSEG7 "HH:MM", ghost "88:88" at 20 %, lit in light, the colon blinking with the seconds
+            // 6) clock (clockface.py): DSEG7 12-hour "h:MM" (blank leading cell), ghost "88:88" at 20 %, lit in light, the colon blinking with the seconds
             {
                 x0 = x; float h = 36 * u, s = h / 1000f;
-                using (var ghost = SegPaths("88:88", "")) using (var lit = SegPaths(now.ToString("HH:mm"), now.Second % 2 == 0 ? "" : ":"))
+                using (var ghost = SegPaths("88:88", "")) using (var lit = SegPaths(Clock12(now, false), now.Second % 2 == 0 ? "" : ":"))
                 using (var m = new Matrix(s, 0, 0, s, x, cy - h / 2))
                 {
                     ghost.Transform(m); lit.Transform(m);
@@ -691,6 +691,12 @@ static partial class FanaticBar
 
     static GraphicsPath RoundRectF(float x, float y, float w, float h, float r) { return Rounded(new RectangleF(x, y, w, h), r); }
     // DSEG7 outlines of a string ("0".."9", ":") laid out with their advances, y down, ink from y 0 (top) to 1000.
+    // 12-hour face text: " 1:05" / "12:30" (" 1:05:09" with seconds); a space is a blank digit cell for SegPaths.
+    internal static string Clock12(DateTime t, bool seconds)
+    {
+        int h = t.Hour % 12; if (h == 0) h = 12;
+        return h.ToString().PadLeft(2) + ":" + t.Minute.ToString("00") + (seconds ? ":" + t.Second.ToString("00") : "");
+    }
     static float SegAdv(char c) { return c == ':' ? Glyphs.Dseg7ColonAdv : Glyphs.Dseg7Adv; }
     static float SegWidth(string t) { float w = 0; for (int i = 0; i < t.Length - 1; i++) w += SegAdv(t[i]); return w + Glyphs.Dseg7XMax - Glyphs.Dseg7XMin; }
     static GraphicsPath SegPaths(string text, string hide)
@@ -698,7 +704,7 @@ static partial class FanaticBar
         var all = new GraphicsPath(FillMode.Winding); float pen = -Glyphs.Dseg7XMin;
         foreach (char c in text)
         {
-            if (hide.IndexOf(c) < 0)
+            if (c != ' ' && hide.IndexOf(c) < 0)   // ' ' = blank digit cell (12-hour leading hour)
                 using (var p = Svg(c == ':' ? Glyphs.Dseg7Colon : Glyphs.Dseg7[c - '0'])) using (var m = new Matrix(1, 0, 0, -1, pen, 1000)) { p.Transform(m); all.AddPath(p, false); }
             pen += SegAdv(c);
         }
