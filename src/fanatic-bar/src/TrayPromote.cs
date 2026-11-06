@@ -42,6 +42,20 @@ static partial class FanaticBar
     }
 
     static int trayPromoteBusy;
+    static int trayPromotionRequested = 1;
+    static volatile bool trayRetry = true;
+    static bool spacerPreferencesReady;
+    static IntPtr preferenceTray;
+    static int lastTrayError;
+    static DateTime nextTrayMaintenance;
+    static void RequestTrayPromotion() { Interlocked.Exchange(ref trayPromotionRequested, 1); }
+    static void TrayMaintenance()
+    {
+        bool requested = Interlocked.Exchange(ref trayPromotionRequested, 0) != 0;
+        if (!requested && !trayRetry && DateTime.UtcNow < nextTrayMaintenance) return;
+        nextTrayMaintenance = DateTime.UtcNow.AddSeconds(15);
+        PromoteOwnTrayIcons(() => ui.Post(__ => ArrangeTray(), null));
+    }
     // Call from anywhere; does the work on a short-lived STA thread; onChanged runs (on that thread) when something moved.
     static void PromoteOwnTrayIcons(Action onChanged)
     {
@@ -54,9 +68,34 @@ static partial class FanaticBar
                 var tn = (ITrayNotify)new TrayNotifyObj();
                 try
                 {
+                    IntPtr shell = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Shell_TrayWnd", null);
+                    if (shell != preferenceTray) { preferenceTray = shell; spacerPreferencesReady = false; }
                     var c = new TrayCollector(); uint h; tn.RegisterCallback(c, out h);
-                    int seen = -1; while (seen != c.Items.Count) { seen = c.Items.Count; Thread.CurrentThread.Join(250); }
-                    tn.UnregisterCallback(h);
+                    try
+                    {
+                        int seen = -1;
+                        for (int wait = 0; seen != c.Items.Count && wait < 12; wait++) { seen = c.Items.Count; Thread.CurrentThread.Join(250); }
+                    }
+                    finally { tn.UnregisterCallback(h); }
+                    // Same template-based SetPreference as tray-prefs setids, including ids not added yet.
+                    // Run after every COM recovery, not just when the current icons were promoted.
+                    if (bigMode && !spacerPreferencesReady)
+                    {
+                        string ownExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fanatic-bar.exe");
+                        int template = c.Exe.FindIndex(exe => string.Equals(exe, ownExe, StringComparison.OrdinalIgnoreCase));
+                        if (template >= 0)
+                        {
+                            for (uint id = 7201; id <= 7230; id++)
+                            {
+                                var x = c.Items[template]; x.id = id; x.guid = Guid.Empty; x.pref = 2;
+                                x.exePtr = Marshal.StringToCoTaskMemUni(c.Exe[template]); x.tipPtr = Marshal.StringToCoTaskMemUni("");
+                                try { tn.SetPreference(ref x); }
+                                finally { Marshal.FreeCoTaskMem(x.exePtr); Marshal.FreeCoTaskMem(x.tipPtr); }
+                            }
+                            spacerPreferencesReady = true;
+                            Log("tray: spacer preferences 7201..7230 ready");
+                        }
+                    }
                     int n = 0;
                     for (int j = 0; j < c.Items.Count; j++)
                     {
@@ -71,11 +110,20 @@ static partial class FanaticBar
                         catch (ArgumentException) { }   // the icon went away since the listing
                         finally { Marshal.FreeCoTaskMem(x.exePtr); Marshal.FreeCoTaskMem(x.tipPtr); }
                     }
-                    if (n > 0) { Log("tray: updated " + n + " own/microphone preference(s)"); if (onChanged != null) onChanged(); }
+                    bool recovered = lastTrayError != 0;
+                    lastTrayError = 0; trayRetry = bigMode && !spacerPreferencesReady;
+                    if (n > 0) Log("tray: updated " + n + " own/microphone preference(s)");
+                    if ((n > 0 || recovered || !trayRetry) && onChanged != null) onChanged();
                 }
                 finally { Marshal.ReleaseComObject(tn); }
             }
-            catch (Exception ex) { Log("tray promote: " + ex.Message); }
+            catch (Exception ex)
+            {
+                trayRetry = true; spacerPreferencesReady = false;
+                int error = Marshal.GetHRForException(ex);
+                if (error != lastTrayError) Log("tray promote: 0x" + error.ToString("x") + "; retrying every 2 s");
+                lastTrayError = error;
+            }
             finally { Interlocked.Exchange(ref trayPromoteBusy, 0); }
         }) { IsBackground = true, Name = "tray-promote" };
         t.SetApartmentState(ApartmentState.STA);

@@ -67,21 +67,80 @@ static partial class FanaticBar
             {
                 bar.Size=new Size(1800,height);
                 using(var bmp=new Bitmap(bar.Width,height)) bar.DrawToBitmap(bmp,bar.ClientRectangle);
+                int count=bar.SpacerCount(48);
                 int natural=(int)typeof(BigBar).GetField("needWidth",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(bar);
-                bar.Width=natural; using(var bmp=new Bitmap(natural,height)) bar.DrawToBitmap(bmp,bar.ClientRectangle);
-                var baseZones=new List<KeyValuePair<Rectangle,Action<bool,Rectangle>>>((List<KeyValuePair<Rectangle,Action<bool,Rectangle>>>)typeof(BigBar).GetField("zones",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(bar));
-                int width=(natural+47)/48*48; bar.Width=width;
+                int minimum=(int)typeof(BigBar).GetField("minimumWidth",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(bar);
+                int expectedCount=Math.Max(1,natural/48); if(expectedCount*48<minimum) expectedCount++;
+                Check(count==expectedCount,"Floor spacer count, add one only when minimum gaps cannot fit");
+                int width=count*48; bar.Width=width;
                 using(var bmp=new Bitmap(width,height)) bar.DrawToBitmap(bmp,bar.ClientRectangle);
                 var zones=(List<KeyValuePair<Rectangle,Action<bool,Rectangle>>>)typeof(BigBar).GetField("zones",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(bar);
-                Check(zones.Count==8 && zones[0].Key.Left==0 && zones[zones.Count-1].Key.Right==width,"Justified strip edges");
+                Check(zones.Count==11 && zones[0].Key.Left==0 && zones[zones.Count-1].Key.Right<=width,"Compact strip edges");
+                Check(width-zones[zones.Count-1].Key.Right<48,"No empty spacer");
+                for(int i=0;i<3;i++) Check(zones[i].Value==(Action<bool,Rectangle>)TaskMgrClick,"CPU/RAM/GPU first, Task Manager/menu action");
                 for(int i=1;i<zones.Count;i++)
                 {
-                    Check(zones[i].Key.Left>=zones[i-1].Key.Right,"Zones overlap");
-                    double added=zones[i].Key.Left-zones[i-1].Key.Right-(baseZones[i].Key.Left-baseZones[i-1].Key.Right);
-                    Check(Math.Abs(added-(width-natural)/(double)(zones.Count-1))<=1.01,"Unequal extra zone spacing");
+                    Check(zones[i].Key.Left-zones[i-1].Key.Right>=2,"Zones overlap or gap below 2 px");
                 }
+                var fitted=zones[3].Key; bar.Measure(); Check(zones[3].Key==fitted,"Measurement must preserve click geometry");
+                Console.WriteLine("compact height={0} need={1} min={2} room={3} spacers={4}",height,natural,minimum,width,count);
             }
         }
+        // Force each degradation, then test headroom, dwell time, and interrupted restores without touching the desktop.
+        using(var bar=new BigBar(true))
+        {
+            bar.Size=new Size(1800,60); DateTime now=new DateTime(2026,11,6);
+            var level=typeof(BigBar).GetField("dropLevel",BindingFlags.NonPublic|BindingFlags.Instance);
+            int full=bar.SpacerCount(48), previous=full;
+            for(int drop=1;drop<=3;drop++)
+            {
+                int count=bar.ApplyBudget((previous-1)*48,48,now);
+                Check((int)level.GetValue(bar)>=drop && count<previous,"Budget must release whole spacers in priority order");
+                previous=count;
+            }
+            int reduced=previous;
+            Check(bar.ApplyBudget(full*48,48,now)==reduced,"Restore must wait");
+            Check(bar.ApplyBudget((full+1)*48,48,now.AddSeconds(7))==reduced,"No early restore");
+            bar.ApplyBudget(reduced*48,48,now.AddSeconds(8));
+            Check(bar.ApplyBudget((full+1)*48,48,now.AddSeconds(9))==reduced,"Interrupted headroom resets dwell");
+            Check(bar.ApplyBudget((full+1)*48,48,now.AddSeconds(18))>reduced,"Restore after stable headroom");
+            for(int i=2;i<=6;i++) bar.ApplyBudget((full+1)*48,48,now.AddSeconds(i*18));
+            Check((int)level.GetValue(bar)==0,"Restore all zones when room returns");
+        }
+        Check(FitSpacerCount(800,760,48)==16 && FitSpacerCount(800,780,48)==17,"Floor rule and minimum-gap fallback");
+        Check(BarWidthBudget(816,1920,1970,834,834)==766,"Right buttons extending past the taskbar reduce the budget");
+        Check(BarWidthBudget(720,1920,1874,834,834)==766,"Shrinking the tray must not create false restore headroom");
+        Check(BarWidthBudget(720,1920,1874,834,650)==950,"Released task-button room must restore the budget");
+        bool missing; int buttonWidth;
+        var trayRow=new Rectangle(0,1140,1920,60);
+        var partial=new List<Rectangle> { new Rectangle(1000,1146,48,48), Rectangle.Empty, new Rectangle(1048,1146,48,48), new Rectangle(0,900,48,48) };
+        var room=SpacerRoom(partial,trayRow,out buttonWidth,out missing);
+        Check(missing && buttonWidth==48 && room==new Rectangle(1000,1146,96,48),"Missing/overflow spacers must preserve usable room");
+        partial.Add(new Rectangle(1300,1146,48,48));
+        room=SpacerRoom(partial,trayRow,out buttonWidth,out missing);
+        Check(room.Width==96 && missing,"Never cover unrelated icons between separated spacers");
+        partial=new List<Rectangle> { new Rectangle(1048,1146,48,48), new Rectangle(1000,1146,48,48) };
+        room=SpacerRoom(partial,trayRow,out buttonWidth,out missing);
+        Check(!missing && room.Width==96,"Complete spacer room regardless of enumeration order");
+        string state=Path.Combine(dir,"test-bar-state.json");
+        Check(SaveSpacerCount(17,state) && ReadSpacerCount(state)==17,"Last good spacer count create/read");
+        Check(SaveSpacerCount(14,state) && ReadSpacerCount(state)==14 && !File.Exists(state+".tmp"),"Atomic spacer count replace/read");
+        File.WriteAllText(state,"{\"spacers\":31}"); Check(ReadSpacerCount(state)==0,"Reject invalid saved spacer count");
+        File.WriteAllText(state,"broken"); Check(ReadSpacerCount(state)==0,"Ignore corrupt state");
+        bigMode=true;
+        var hidden=NewSlot(Strings.T("slot.cpu"),DrawSys(24,false,0),(o,e)=>{});
+        try { Check(!hidden.Ni.Visible,"Big-mode slots must be born hidden"); }
+        finally { hidden.Ni.Dispose(); bigMode=false; }
+        cpu=new Slot { Tip=Strings.T("tip.cpu",42) }; ram=new Slot { Tip=Strings.T("tip.ram",60,"9.6","16.0") }; gpu=new Slot { Tip=Strings.T("tip.gpu",37) };
+        using(var bar=new BigBar(true))
+        {
+            bar.Size=new Size(bar.SpacerCount(48)*48,60);
+            using(var bmp=new Bitmap(bar.Width,bar.Height)) bar.DrawToBitmap(bmp,bar.ClientRectangle);
+            var hot=typeof(BigBar).GetField("hot",BindingFlags.NonPublic|BindingFlags.Instance);
+            var tip=typeof(BigBar).GetMethod("HotTip",BindingFlags.NonPublic|BindingFlags.Instance);
+            for(int i=0;i<3;i++) { hot.SetValue(bar,i); Check((string)tip.Invoke(bar,null)==new[]{cpu.Tip,ram.Tip,gpu.Tip}[i],"System-zone tooltips must retain the full poll text"); }
+        }
+        Console.WriteLine("PASS: partial/overflow spacer recovery geometry, atomic spacer state, hidden startup slots, CPU/RAM/GPU tooltips");
         for(int i=0;i<5;i++) using(var bmp=DrawGpu(24,i))
         {
             Check(bmp.Width==24,"GPU size");
@@ -92,6 +151,6 @@ static partial class FanaticBar
         Check(ev!=IntPtr.Zero && other!=IntPtr.Zero,"Shared event ACL/open");
         try { Check(SetEvent(other) && WaitForSingleObject(ev,0)==0 && WaitForSingleObject(ev,0)==258,"Event set/wait/auto-reset"); }
         finally { CloseHandle(other); CloseHandle(ev); }
-        Console.WriteLine("PASS: justified click zones at 48/60/66/90px, GPU levels, shared auto-reset event ACL");
+        Console.WriteLine("PASS: compact click zones/min gaps at 48/60/66/90px, width budget/restore hysteresis, GPU levels, shared auto-reset event ACL");
     }
 }

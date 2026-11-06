@@ -97,14 +97,14 @@ static partial class FanaticBar
                     using (var bmp = new Bitmap(1800, height)) bar.DrawToBitmap(bmp, bar.ClientRectangle);
                     int need = (int)typeof(BigBar).GetField("needWidth", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(bar);
                     FontAssert(need <= MaxSpacers * 48, "Spacer limit exceeded: " + lang + " " + height + " " + need);
-                    bar.Width = (need + 47) / 48 * 48;
+                    bar.Width = bar.SpacerCount(48) * 48;
                     using (var bmp = new Bitmap(bar.Width, height))
                     {
                         bar.DrawToBitmap(bmp, bar.ClientRectangle); canvas.DrawImageUnscaled(bmp, 0, row); row += height;
                     }
                     var zones = (List<KeyValuePair<Rectangle, Action<bool, Rectangle>>>)typeof(BigBar).GetField("zones", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(bar);
-                    FontAssert(zones.Count == 8 && zones[0].Key.Left == 0 && zones[7].Key.Right == bar.Width, "Multilingual strip edges");
-                    for (int i = 1; i < zones.Count; i++) FontAssert(zones[i].Key.Left >= zones[i - 1].Key.Right, "Multilingual zones overlap");
+                    FontAssert(zones.Count == 11 && zones[0].Key.Left == 0 && zones[10].Key.Right <= bar.Width && bar.Width-zones[10].Key.Right < 48, "Multilingual compact strip edges");
+                    for (int i = 1; i < zones.Count; i++) FontAssert(zones[i].Key.Left - zones[i - 1].Key.Right >= 2, "Multilingual zones overlap/min gap");
                     Console.WriteLine("layout {0} height={1} needWidth={2} reserved={3}", lang, height, need, bar.Width);
                 }
                 sheet.Save(Path.Combine(root, "font-layout-" + lang + ".png"), ImageFormat.Png);

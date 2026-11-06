@@ -48,7 +48,7 @@ static partial class FanaticBar
     const string ControlCenter ="ms-actioncenter:controlcenter/&showFooter=true";
 
     // Draw = the last picture (redrawn when the pointer comes or goes: Hot = full brightness, otherwise dimmed, owner batch 4)
-    class Slot { public NotifyIcon Ni; public string Key = ""; public Func<int, Bitmap> Draw; public bool Hot; }
+    class Slot { public NotifyIcon Ni; public string Key = "", Tip = ""; public Func<int, Bitmap> Draw; public bool Hot; }
     static SynchronizationContext ui;
     static Slot wifi, ping, cpu, ram, gpu, wSym, wTemp, bat, batPct, audio, gear, day, week, hours, minutes;
 
@@ -92,6 +92,8 @@ static partial class FanaticBar
         // the picture is redrawn only when its data (key) changes; a new tooltip text alone just replaces the text
         ui.Post(_ =>
         {
+            s.Tip = tip;
+            if (bigMode && s != gear) { s.Key = key; s.Draw = draw; BigChanged(); return; }
             if (key != s.Key) { s.Key = key; s.Draw = draw; Paint(s); }
             string t = tip.Length > 63 ? tip.Substring(0, 63) : tip;   // NotifyIcon.Text throws above 63 chars
             if (s.Ni.Text != t) s.Ni.Text = t;
@@ -803,6 +805,7 @@ static partial class FanaticBar
             if (lastTotal != 0 && dt > 0)
             {
                 int pct = (int)Math.Round(100.0 * (dt - di) / dt); int cnt = (int)Math.Ceiling(pct / 25.0);
+                bigCpuPct = pct;
                 Show(cpu, cnt.ToString(), s => DrawSys(s, false, pct), Strings.T("tip.cpu", pct));
             }
             lastIdle = idle; lastTotal = total;
@@ -811,6 +814,7 @@ static partial class FanaticBar
         if (GlobalMemoryStatusEx(ref ms))
         {
             int pct = (int)ms.dwMemoryLoad; double used = (ms.ullTotalPhys - ms.ullAvailPhys) / 1073741824.0, tot = ms.ullTotalPhys / 1073741824.0;
+            bigRamPct = pct;
             Show(ram, ((int)Math.Ceiling(pct / 25.0)).ToString(), s => DrawSys(s, true, pct),
                  Strings.T("tip.ram", pct, used.ToString("0.0", Inv), tot.ToString("0.0", Inv)));
         }
@@ -965,12 +969,14 @@ static partial class FanaticBar
             ui = new SynchronizationContext();
             using (var bar = new BigBar(true))
             {
-                bar.Size = new Size(outBmp.Width, 66);
+                bar.Size = new Size(outBmp.Width, 60);
                 double?[] temperatures = { 12, -7, 8, null };
                 for (int i = 0; i < temperatures.Length; i++)
                 {
                     wTempVal = temperatures[i]; wCode = i == 1 ? 71 : 2; wOk = i >= 2 ? DateTime.Now.AddHours(-3) : DateTime.Now;
                     bigMicInUse = i == 1; bigMicMuted = i == 2;
+                    bigCpuPct = new[] { 5, 40, 70, 95 }[i]; bigRamPct = 60; bigGpuPct = new[] { 0, 25, 60, 95 }[i];
+                    bar.Width = bar.SpacerCount(48) * 48;
                     using (var strip = new Bitmap(bar.Width, bar.Height)) { bar.DrawToBitmap(strip, bar.ClientRectangle); g.DrawImageUnscaled(strip, 0, rows.Count * cellH + i * 66); }
                 }
             }
@@ -1168,11 +1174,11 @@ static partial class FanaticBar
     // Each slot gets a fixed icon id (WinForms numbers them 1, 2, 3... in creation order, and the tray
     // keeps old positions for low ids it has seen before), so a re-added icon is always "new" to that memory.
     static int nextUid = 7101;
-    static Slot NewSlot(string text, Bitmap first, MouseEventHandler click)
+    static Slot NewSlot(string text, Bitmap first, MouseEventHandler click, bool keepInBigMode = false)
     {
         var ni = new NotifyIcon { Icon = ToIcon(first), Text = text };
         typeof(NotifyIcon).GetField("id", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(ni, nextUid++);
-        ni.Visible = true;
+        ni.Visible = !bigMode || keepInBigMode;
         var s = new Slot { Ni = ni };
         first.Dispose(); s.Ni.MouseClick += click; s.Ni.MouseMove += (o, e) => HoverSlot(s); return s;
     }
@@ -1216,6 +1222,8 @@ static partial class FanaticBar
             Application.ThreadException += (s, e) => Log("ThreadException: " + e.Exception);
             ui = new WindowsFormsSynchronizationContext();
             SynchronizationContext.SetSynchronizationContext(ui);
+            bigMode = Setting("bigIndicators", true);
+            if (Setting("taskbarBlack", true)) KeepTaskbarBlack();
             LoadLocation(); LoadWeatherCache();   // disk data is ready before creating any weather surface
             int sz = IconSize();
             // Left click = the quick action / flyout; right click = a small labelled menu (BigBar.cs holds the shared actions).
@@ -1228,7 +1236,7 @@ static partial class FanaticBar
             hours = NewSlot(Strings.T("slot.time"), DrawSeg(sz, "88"), clock);
             week = NewSlot(Strings.T("slot.date"), DrawDash(sz, Muted), cal);
             day = NewSlot(Strings.T("slot.date"), DrawDash(sz, Muted), cal);
-            if (Setting("gear", true)) gear = NewSlot(Strings.T("slot.windows_settings"), DrawGear(sz), (s, e) => Open("ms-settings:"));
+            if (Setting("gear", true)) gear = NewSlot(Strings.T("slot.windows_settings"), DrawGear(sz), (s, e) => Open("ms-settings:"), true);
             if (gear != null) { gear.Draw = DrawGear; Paint(gear); }
             audio = NewSlot(Strings.T("slot.audio"), DrawAudio(sz, -1, false), sound);
             batPct = NewSlot(Strings.T("slot.battery"), DrawDash(sz, Muted), power);
@@ -1241,8 +1249,7 @@ static partial class FanaticBar
             cpu = NewSlot(Strings.T("slot.cpu"), DrawSys(sz, false, 0), tm);
             ping = NewSlot(Strings.T("slot.ping"), DrawDash(sz, Danger), net);
             wifi = NewSlot("Wi-Fi", DrawWifi(sz, -1), net);
-            bigMode = Setting("bigIndicators", true);
-            if (bigMode) { StartBigMode(); StartLayoutEvents(); }   // the native clock: HideClock policy, set / removed elevated (README)
+            if (bigMode) { PollBattery(); StartBigMode(); StartLayoutEvents(); }   // measure battery presence before reserving room
             tWifi = Every(3000, () => { PollIface(); PollWifi(); }); tPing = Every(1000, PollPing); tSys = Every(2000, PollSys);
             tBat = Every(1000, PollBattery); tAudio = Every(1000, PollAudio);
             var timers = new List<System.Threading.Timer> {
@@ -1270,9 +1277,8 @@ static partial class FanaticBar
             {
                 lock (weatherFetchLock) { double lat = geoLat, lon = geoLon; LoadLocation(); if (lat != geoLat || lon != geoLon) PollWeather(); }
             }, null, -1, false);
-            // keep the block in order: shortly after start, then every 30 s (Explorer restarts, battery slots appearing)
-            // every 15 s: re-promote our icons if Explorer filed them as new (pref 0, see TrayPromote.cs), then keep the order
-            timers.Add(new System.Threading.Timer(_ => { PromoteOwnTrayIcons(() => ui.Post(__ => ArrangeTray(), null)); ui.Post(__ => ArrangeTray(), null); }, null, 2000, 15000));
+            // Retry unavailable tray COM / missing spacers every 2 s; healthy promotion and ordering every 15 s.
+            timers.Add(new System.Threading.Timer(_ => TrayMaintenance(), null, 0, 2000));
             // black taskbar (Taskbar.cs): checked every 2 s, re-applied only when Explorer has reset it
             timers.Add(StartAutoPower());   // power mode "Автоматичний" (default): overlay follows AC/DC
             timers.Add(new System.Threading.Timer(_ => { try { CheckIconSize(); } catch (Exception ex) { Log("icon size: " + ex.Message); } }, null, 2000, 2000));

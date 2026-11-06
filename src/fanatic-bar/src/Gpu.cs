@@ -89,6 +89,7 @@ static partial class FanaticBar
     static void PollGpu()
     {
         int pct = ReadGpuPercent(), level = GpuLevel(pct);
+        bigGpuPct = pct;
         Show(gpu, level.ToString(), s => DrawGpu(s, level), Strings.T("tip.gpu", pct < 0 ? "--" : pct.ToString()));
     }
     static void GpuProbe()
